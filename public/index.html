@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yuwa Mart — Online Grocery, Birgunj</title>
+<style>
+  :root{
+    --forest: #1F4D3A;
+    --forest-deep: #0F2C21;
+    --forest-light: #E7F1EA;
+    --saffron: #D98E2B;
+    --cream: #FAF7F0;
+    --ink: #1E2422;
+    --grey: #6B7570;
+    --line: #E4E0D6;
+    --success: #2E8B57;
+    --danger: #B3261E;
+    --white: #FFFFFF;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--forest-deep);
+    color: var(--ink);
+    display:flex;
+    justify-content:center;
+    min-height:100vh;
+  }
+  .phone{
+    width:100%;
+    max-width:430px;
+    background: var(--cream);
+    min-height:100vh;
+    position:relative;
+    overflow-x:hidden;
+    box-shadow: 0 0 50px rgba(0,0,0,.45);
+  }
+  .screen{ display:none; min-height:100vh; }
+  .screen.active{ display:block; }
+  img.ph{ width:100%; height:100%; object-fit:cover; display:block; }
+
+  /* ---------------- GATE / LOADING / SIGNUP SCREENS ---------------- */
+  .gate{
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:40px 28px;
+    text-align:center;
+    background: linear-gradient(180deg, var(--forest) 0%, var(--forest-deep) 100%);
+    color:#fff;
+  }
+  .gate .logo{
+    font-size:26px; font-weight:800; letter-spacing:-0.5px; margin-bottom:6px;
+  }
+  .gate .logo span{ color: var(--saffron); }
+  .gate .tag{ font-size:13px; opacity:.8; margin-bottom:34px;}
+  .gate .spinner{
+    width:38px; height:38px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.25); border-top-color:#fff;
+    animation: spin 0.9s linear infinite; margin-bottom:20px;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg);} }
+  .gate h2{ font-size:17px; margin-bottom:8px; }
+  .gate p{ font-size:13px; opacity:.85; line-height:1.6; max-width:300px;}
+  .gate .icon-big{ font-size:52px; margin-bottom:18px; }
+  .btn-white{
+    margin-top:26px; background:#fff; color:var(--forest-deep);
+    border:none; border-radius:11px; padding:13px 26px; font-size:14px; font-weight:800;
+    cursor:pointer;
+  }
+  .btn-outline-white{
+    margin-top:12px; background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,.5);
+    border-radius:11px; padding:11px 26px; font-size:13px; font-weight:700; cursor:pointer;
+  }
+
+  /* ---------------- AUTH ---------------- */
+  .auth-wrap{
+    min-height:100vh; background: var(--cream); padding:36px 24px; display:flex; flex-direction:column;
+  }
+  .auth-logo{ text-align:center; margin-bottom:8px;}
+  .auth-logo .mark{ font-size:44px; }
+  .auth-logo .name{ font-size:22px; font-weight:800; color:var(--forest-deep); margin-top:6px;}
+  .auth-logo .name span{ color:var(--saffron); }
+  .auth-sub{ text-align:center; font-size:12.5px; color:var(--grey); margin-bottom:28px;}
+  .auth-tabs{ display:flex; gap:8px; margin-bottom:22px; background:#fff; padding:4px; border-radius:11px; border:1px solid var(--line);}
+  .auth-tab{ flex:1; text-align:center; padding:9px; border-radius:8px; font-size:13px; font-weight:700; color:var(--grey); cursor:pointer;}
+  .auth-tab.active{ background:var(--forest); color:#fff;}
+  .field{ margin-top:14px;}
+  .field label{ font-size:12px; font-weight:700; color:var(--forest-deep); display:block; margin-bottom:5px;}
+  .field input, .field select, .field textarea{
+    width:100%; border:1.5px solid var(--line); border-radius:10px;
+    padding:12px 13px; font-size:14px; font-family:inherit; outline:none; background:#fff;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color: var(--forest);}
+  .field-hint{ font-size:11px; color:var(--grey); margin-top:5px;}
+  .primary-btn{
+    width:100%; background: var(--forest); color:#fff; border:none;
+    border-radius:12px; padding:15px; font-size:14.5px; font-weight:800;
+    margin-top:20px; cursor:pointer;
+  }
+  .primary-btn.saffron{ background: var(--saffron); }
+  .primary-btn:disabled{ background:#D8D2C4; cursor:not-allowed;}
+  .auth-note{ font-size:11.5px; color:var(--grey); text-align:center; margin-top:14px; line-height:1.6;}
+  .area-badge{
+    display:flex; align-items:center; gap:8px; background:var(--forest-light);
+    border:1px solid #CFE3D6; border-radius:10px; padding:10px 12px; margin-top:18px;
+    font-size:12px; color:var(--forest-deep); font-weight:600;
+  }
+
+  /* ---------------- HEADER (MAIN APP) ---------------- */
+  header{
+    background: var(--forest);
+    color:#fff;
+    padding:14px 16px 12px;
+    position:sticky; top:0; z-index:50;
+  }
+  .toprow{ display:flex; justify-content:space-between; align-items:center; gap:10px;}
+  .brand{ font-size:20px; font-weight:800; letter-spacing:-0.5px;}
+  .brand span{ color: var(--saffron);}
+  .head-icons{ display:flex; align-items:center; gap:8px;}
+  .icon-pill{
+    background:rgba(255,255,255,.15); border:none; color:#fff; border-radius:8px;
+    width:32px; height:32px; font-size:14px; cursor:pointer; position:relative;
+  }
+  .badge-dot{
+    position:absolute; top:-3px; right:-3px; background:var(--saffron); color:#fff;
+    font-size:9px; font-weight:800; border-radius:50%; width:16px; height:16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .delivery-strip{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:10px; font-size:12.5px;
+  }
+  .delivery-strip .loc{ display:flex; align-items:center; gap:6px; max-width:70%;}
+  .delivery-strip .loc .addr-txt{ font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px;}
+  .delivery-strip .eta{
+    background:rgba(255,255,255,.15); border-radius:8px; padding:4px 10px; font-weight:700; font-size:11.5px;
+  }
+  .searchbar{
+    margin-top:12px; background:#fff; border-radius:11px; display:flex; align-items:center;
+    padding:11px 13px; gap:8px;
+  }
+  .searchbar input{ border:none; outline:none; width:100%; font-size:14px; color:var(--ink);}
+
+  /* ---------------- TRUST STRIP ---------------- */
+  .trust-strip{
+    display:flex; justify-content:space-between; padding:14px 16px 4px; gap:8px;
+  }
+  .trust-item{ flex:1; text-align:center; }
+  .trust-item .ti-ico{ font-size:20px; }
+  .trust-item .ti-txt{ font-size:10.5px; color:var(--grey); font-weight:700; margin-top:4px; line-height:1.25;}
+
+  /* ---------------- OFFERS ---------------- */
+  .offer-scroll{ display:flex; gap:12px; overflow-x:auto; padding:14px 16px 4px; scrollbar-width:none;}
+  .offer-scroll::-webkit-scrollbar{ display:none;}
+  .offer-card{
+    flex:0 0 auto; width:270px; border-radius:14px; padding:16px;
+    color:#fff; position:relative; overflow:hidden;
+  }
+  .offer-card.c1{ background:linear-gradient(120deg, var(--forest), #143526);}
+  .offer-card.c2{ background:linear-gradient(120deg, var(--saffron), #A9661A);}
+  .offer-card.c3{ background:linear-gradient(120deg, #8C2F2F, #5C1B1B);}
+  .offer-card strong{ display:block; font-size:15px; margin-bottom:3px;}
+  .offer-card span{ font-size:11.5px; opacity:.9;}
+  .offer-card .code-tag{
+    display:inline-block; margin-top:10px; background:rgba(255,255,255,.2);
+    padding:4px 10px; border-radius:6px; font-size:11px; font-weight:800;
+  }
+
+  /* ---------------- CATEGORIES ---------------- */
+  .section-title{ padding:18px 16px 8px; font-size:15px; font-weight:800; color:var(--forest-deep); display:flex; justify-content:space-between; align-items:center;}
+  .section-title small{ font-size:11.5px; color:var(--grey); font-weight:600;}
+  .cat-scroll{ display:flex; gap:12px; overflow-x:auto; padding:4px 16px 8px; scrollbar-width:none;}
+  .cat-scroll::-webkit-scrollbar{ display:none;}
+  .cat-chip{ flex:0 0 auto; width:74px; text-align:center; cursor:pointer;}
+  .cat-chip .ico{
+    width:64px; height:64px; border-radius:16px; background:#fff; border:1.5px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:6px;
+  }
+  .cat-chip.active .ico{ border-color: var(--saffron); border-width:2px; background:#FFF7EB;}
+  .cat-chip .lbl{ font-size:10.5px; font-weight:700; color:var(--ink); line-height:1.25;}
+
+  /* ---------------- FAST FOOD STRIP ---------------- */
+  .ff-scroll{ display:flex; gap:12px; overflow-x:auto; padding:4px 16px 10px; scrollbar-width:none;}
+  .ff-scroll::-webkit-scrollbar{ display:none;}
+  .ff-card{
+    flex:0 0 auto; width:130px; background:#fff; border-radius:14px; border:1px solid var(--line); overflow:hidden;
+  }
+  .ff-card .ff-img{ width:100%; height:90px; }
+  .ff-card .ff-body{ padding:8px 9px 10px;}
+  .ff-card .ff-name{ font-size:12px; font-weight:700; line-height:1.25; min-height:30px;}
+  .ff-card .ff-price{ font-size:12.5px; font-weight:800; color:var(--forest-deep); margin-top:4px;}
+  .ff-card .ff-add{ margin-top:6px; width:100%; background:var(--forest); color:#fff; border:none; border-radius:7px; padding:6px; font-size:11px; font-weight:800; cursor:pointer;}
+
+  /* ---------------- PRODUCT GRID ---------------- */
+  .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; padding:8px 16px 24px;}
+  .card{
+    background:#fff; border-radius:14px; border:1px solid var(--line); overflow:hidden;
+    display:flex; flex-direction:column; position:relative;
+  }
+  .card .discount{
+    position:absolute; top:8px; left:8px; background: var(--success); color:#fff;
+    font-size:10px; font-weight:800; padding:2px 7px; border-radius:5px; z-index:2;
+  }
+  .card .organic-tag{
+    position:absolute; top:8px; right:8px; background:rgba(255,255,255,.92); color:var(--forest);
+    font-size:9.5px; font-weight:800; padding:2px 6px; border-radius:5px; z-index:2;
+  }
+  .card .imgwrap{ width:100%; height:110px; background:#f2efe6;}
+  .card .info{ padding:10px 10px 12px;}
+  .card .weight{ font-size:11px; color:var(--grey);}
+  .card .name{ font-size:13px; font-weight:700; margin-top:2px; line-height:1.25; min-height:33px;}
+  .card .pricerow{ display:flex; align-items:center; justify-content:space-between; margin-top:8px;}
+  .price-block{ display:flex; flex-direction:column;}
+  .price-now{ font-size:14px; font-weight:800; color: var(--forest-deep);}
+  .price-old{ font-size:11px; color:var(--grey); text-decoration:line-through;}
+  .add-btn{ background: var(--forest); color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:800; padding:7px 12px; cursor:pointer;}
+  .qty-ctrl{ display:flex; align-items:center; gap:8px; background: var(--forest); border-radius:8px; padding:4px 8px;}
+  .qty-ctrl button{ background:none; border:none; color:#fff; font-size:16px; font-weight:800; cursor:pointer; width:16px;}
+  .qty-ctrl .qn{ color:#fff; font-size:13px; font-weight:700; min-width:14px; text-align:center;}
+
+  /* ---------------- CART BAR ---------------- */
+  .cartbar{
+    position:sticky; bottom:14px; left:0; right:0; margin:0 16px; background: var(--forest); color:#fff;
+    border-radius:14px; padding:12px 16px; display:none; justify-content:space-between; align-items:center;
+    cursor:pointer; box-shadow:0 8px 20px rgba(15,44,33,.4); z-index:40;
+  }
+  .cartbar.show{ display:flex;}
+  .cartbar .left{ font-size:13px;}
+  .cartbar .left strong{ display:block; font-size:14px;}
+  .cartbar .right{ font-size:13px; font-weight:800; display:flex; align-items:center; gap:4px;}
+
+  /* ---------------- OVERLAYS ---------------- */
+  .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; z-index:100; justify-content:center;}
+  .overlay.show{ display:flex;}
+  .sheet{
+    position:absolute; bottom:0; width:100%; max-width:430px; background:#fff; border-radius:20px 20px 0 0;
+    max-height:90vh; overflow-y:auto; padding:18px 16px 26px;
+  }
+  .sheet-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .sheet-head h3{ font-size:17px; color:var(--forest-deep);}
+  .close-x{ background:var(--line); border:none; border-radius:50%; width:28px; height:28px; font-size:15px; cursor:pointer;}
+  .cart-line{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); gap:8px;}
+  .cart-line .thumb{ width:44px; height:44px; border-radius:8px; overflow:hidden; flex:0 0 auto; background:#f2efe6;}
+  .cart-line .info{ flex:1;}
+  .cart-line .info .nm{ font-size:13px; font-weight:700;}
+  .cart-line .info .pr{ font-size:12px; color:var(--grey); margin-top:2px;}
+  .bill-row{ display:flex; justify-content:space-between; font-size:13px; padding:6px 0; color:var(--ink);}
+  .bill-row.total{ font-weight:800; font-size:15px; border-top:1px dashed var(--line); margin-top:6px; padding-top:10px;}
+  .min-order-warn{
+    margin-top:14px; background:#FCEEE9; border:1px solid #F3C9BC; color:var(--danger);
+    border-radius:10px; padding:11px 12px; font-size:12.5px; font-weight:600;
+  }
+  .cod-box{
+    margin-top:14px; background:#FBF3E4; border:1px solid #EEDCB6; border-radius:10px; padding:12px;
+    font-size:12.5px; color:#7A5B1E; display:flex; gap:8px; align-items:flex-start;
+  }
+  .loc-box{
+    margin-top:14px; background: var(--forest-light); border:1px solid #CFE3D6; border-radius:10px; padding:12px;
+    font-size:12.5px; color:var(--forest-deep); display:flex; gap:8px; align-items:flex-start;
+  }
+  .empty-cart{ text-align:center; padding:30px 10px; color:var(--grey); font-size:13.5px;}
+
+  /* ---------------- OTP / STATUS ---------------- */
+  .status-wrap{ text-align:center; padding:14px 8px 8px;}
+  .status-wrap .big-ico{ font-size:50px;}
+  .status-wrap h2{ font-size:18px; margin-top:10px; color:var(--forest-deep);}
+  .status-wrap p{ font-size:13px; color:var(--grey); margin-top:4px;}
+  .otp-box{
+    margin:18px auto 4px; background: var(--forest-light); border:1.5px dashed var(--forest);
+    border-radius:12px; padding:16px; max-width:230px;
+  }
+  .otp-box .otp-label{ font-size:11.5px; color:var(--forest-deep); font-weight:700;}
+  .otp-box .otp-digits{ font-size:28px; font-weight:800; letter-spacing:8px; color:var(--forest); margin-top:6px;}
+  .eta-pill{
+    display:inline-block; margin-top:14px; background:var(--saffron); color:#fff; font-weight:800;
+    font-size:12.5px; padding:7px 16px; border-radius:20px;
+  }
+  .track-steps{ margin-top:24px; text-align:left;}
+  .track-step{ display:flex; gap:12px; padding-bottom:20px; position:relative;}
+  .track-step:not(:last-child)::before{ content:''; position:absolute; left:11px; top:24px; bottom:0; width:2px; background:var(--line);}
+  .track-step.done:not(:last-child)::before{ background: var(--success);}
+  .dot{ width:24px; height:24px; border-radius:50%; background:var(--line); display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; flex:0 0 24px;}
+  .track-step.done .dot{ background: var(--success);}
+  .track-step.active .dot{ background: var(--saffron);}
+  .track-step .tlabel{ font-size:13.5px; font-weight:700; color:var(--ink);}
+  .track-step .ttime{ font-size:11.5px; color:var(--grey); margin-top:2px;}
+
+  /* ---------------- OWNER DASHBOARD ---------------- */
+  .tab-row{ display:flex; gap:6px; margin-bottom:14px;}
+  .tab-btn{ flex:1; padding:9px 4px; border-radius:9px; border:1.5px solid var(--line); background:#fff; font-size:11.5px; font-weight:700; color:var(--grey); cursor:pointer;}
+  .tab-btn.active{ background:var(--forest); color:#fff; border-color:var(--forest);}
+  .owner-form-box{ background:#F7F4EC; border-radius:12px; padding:12px; margin-bottom:16px;}
+  .owner-form-box h4{ font-size:13px; color:var(--forest-deep); margin-bottom:8px;}
+  .form-row2{ display:flex; gap:8px;}
+  .form-row2 .field{ flex:1;}
+  .owner-prod-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); gap:8px;}
+  .owner-prod-row .thumb{ width:38px; height:38px; border-radius:8px; overflow:hidden; flex:0 0 auto; background:#f2efe6;}
+  .owner-prod-row .opinfo{ flex:1;}
+  .owner-prod-row .opname{ font-size:12.5px; font-weight:700;}
+  .owner-prod-row .opmeta{ font-size:11px; color:var(--grey); margin-top:2px;}
+  .op-actions{ display:flex; gap:6px; flex:0 0 auto;}
+  .icon-btn{ background:var(--line); border:none; border-radius:7px; width:30px; height:30px; font-size:13px; cursor:pointer;}
+  .icon-btn.danger{ background:#F6D9D9; color:var(--danger);}
+  .order-card{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px;}
+  .order-card .ohead{ display:flex; justify-content:space-between; font-size:13px; font-weight:800; color:var(--forest-deep);}
+  .order-card .otime{ font-size:11px; color:var(--grey); font-weight:600;}
+  .order-card .ocust{ font-size:12.5px; margin-top:6px; color:var(--ink); line-height:1.6;}
+  .order-card .oitems{ font-size:12px; color:var(--grey); margin-top:6px; line-height:1.6;}
+  .order-card select{ margin-top:10px; width:100%; border:1.5px solid var(--line); border-radius:8px; padding:7px 10px; font-size:12.5px; font-family:inherit;}
+  .map-link{ display:inline-block; margin-top:8px; font-size:12px; font-weight:700; color:var(--forest); text-decoration:none; border:1px solid var(--forest); border-radius:7px; padding:5px 10px;}
+  .no-data{ text-align:center; color:var(--grey); font-size:13px; padding:30px 0;}
+  .cust-row{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:12.5px;}
+  .cust-row .cid{ font-weight:800; color:var(--forest);}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- ============ SCREEN 1: LOCATION CHECK ============ -->
+  <div class="screen active" id="screen-loading">
+    <div class="gate">
+      <div class="logo">Yuwa <span>Mart</span></div>
+      <div class="tag">Fresh Groceries, Delivered Fast</div>
+      <div class="spinner"></div>
+      <h2>Checking your location…</h2>
+      <p>Yuwa Mart currently delivers only within Birgunj and Pakaha Mainpur Municipality (Parsa District). Please allow location access to continue.</p>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 2: OUTSIDE SERVICE AREA ============ -->
+  <div class="screen" id="screen-blocked">
+    <div class="gate">
+      <div class="icon-big">📍</div>
+      <div class="logo">Yuwa <span>Mart</span></div>
+      <h2 style="margin-top:16px;">We're not here yet!</h2>
+      <p>Yuwa Mart delivers only within <strong>Birgunj and Pakaha Mainpur Municipality</strong> (Parsa District). Your current location seems to be outside our service area.</p>
+      <button class="btn-white" onclick="startLocationCheck()">Try Again</button>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 3: LOCATION PERMISSION NEEDED ============ -->
+  <div class="screen" id="screen-permission">
+    <div class="gate">
+      <div class="icon-big">📡</div>
+      <div class="logo">Yuwa <span>Mart</span></div>
+      <h2 style="margin-top:16px;">Location access needed</h2>
+      <p>To confirm you're within our Birgunj / Pakaha Mainpur Municipality delivery zone and to deliver your order to the right place, please enable location access for this page in your browser.</p>
+      <button class="btn-white" onclick="startLocationCheck()">Enable Location & Retry</button>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 4: AUTH (SIGNUP / LOGIN) ============ -->
+  <div class="screen" id="screen-auth">
+    <div class="auth-wrap">
+      <div class="auth-logo">
+        <div class="mark">🥬</div>
+        <div class="name">Yuwa <span>Mart</span></div>
+      </div>
+      <div class="auth-sub">Birgunj & Pakaha Mainpur's own online grocery store</div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabSignup" onclick="switchAuthTab('signup')">Create Account</div>
+        <div class="auth-tab" id="tabLogin" onclick="switchAuthTab('login')">Log In</div>
+      </div>
+
+      <!-- SIGNUP FORM -->
+      <div id="signupForm">
+        <div class="field">
+          <label>Full Name</label>
+          <input id="suName" placeholder="e.g. Ramesh Sah">
+        </div>
+        <div class="field">
+          <label>Email or Phone Number</label>
+          <input id="suContact" placeholder="e.g. 98XXXXXXXX or you@email.com">
+        </div>
+        <div class="field">
+          <label>Create Password</label>
+          <input id="suPassword" type="password" placeholder="Minimum 4 characters">
+        </div>
+        <div class="area-badge">📍 Service available in Birgunj and Pakaha Mainpur Municipality only</div>
+        <button class="primary-btn" onclick="doSignup()">Create My Account</button>
+      </div>
+
+      <!-- LOGIN FORM -->
+      <div id="loginForm" style="display:none;">
+        <div class="field">
+          <label>Email or Phone Number</label>
+          <input id="liContact" placeholder="Registered email or phone">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input id="liPassword" type="password" placeholder="Your password">
+        </div>
+        <button class="primary-btn" onclick="doLogin()">Log In</button>
+      </div>
+
+      <div class="auth-note">By continuing, you agree that Yuwa Mart delivers only within Birgunj and Pakaha Mainpur Municipality. Your Customer ID will be generated automatically after registration.</div>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 5: MAIN APP ============ -->
+  <div class="screen" id="screen-main">
+
+    <header>
+      <div class="toprow">
+        <div class="brand">Yuwa <span>Mart</span></div>
+        <div class="head-icons">
+          <button class="icon-pill" onclick="openMyOrders()">🧾</button>
+          <button class="icon-pill" onclick="openOwnerLogin()" title="Owner Login">🔐</button>
+        </div>
+      </div>
+      <div class="delivery-strip">
+        <div class="loc">📍 <span class="addr-txt" id="headerAddr">Detecting your address…</span></div>
+        <div class="eta" id="headerEta">~25 min</div>
+      </div>
+      <div class="searchbar">
+        🔍 <input id="searchInput" placeholder="Search rice, vegetables, snacks…">
+      </div>
+    </header>
+
+    <div class="trust-strip">
+      <div class="trust-item"><div class="ti-ico">🌿</div><div class="ti-txt">100% Fresh<br>Guarantee</div></div>
+      <div class="trust-item"><div class="ti-ico">🧼</div><div class="ti-txt">Hygienically<br>Packed</div></div>
+      <div class="trust-item"><div class="ti-ico">🏠</div><div class="ti-txt">Local to<br>Birgunj</div></div>
+      <div class="trust-item"><div class="ti-ico">💵</div><div class="ti-txt">Cash on<br>Delivery</div></div>
+    </div>
+
+    <div class="offer-scroll">
+      <div class="offer-card c1">
+        <strong>Rs. 50 OFF on your first order</strong>
+        <span>Valid on orders above Rs. 500</span>
+        <div class="code-tag">CODE: WELCOME50</div>
+      </div>
+      <div class="offer-card c2">
+        <strong>Fresh Vegetable Combo</strong>
+        <span>Save up to 20% on daily veggie packs</span>
+        <div class="code-tag">CODE: FRESH20</div>
+      </div>
+      <div class="offer-card c3">
+        <strong>Fast Food Friday</strong>
+        <span>Flat 15% off on all Fast Food orders</span>
+        <div class="code-tag">CODE: FF15</div>
+      </div>
+    </div>
+
+    <div class="section-title">Shop by Category</div>
+    <div class="cat-scroll" id="catScroll"></div>
+
+    <div class="section-title">Recommended Fast Food <small>Order Now</small></div>
+    <div class="ff-scroll" id="ffScroll"></div>
+
+    <div class="section-title" id="gridTitle">All Groceries</div>
+    <div class="grid" id="productGrid"></div>
+
+    <div class="cartbar" id="cartBar" onclick="openCart()">
+      <div class="left">
+        <strong id="cartCount">0 items</strong>
+        <span id="cartWeight">Minimum order Rs. 100</span>
+      </div>
+      <div class="right">Rs. <span id="cartTotalMini">0</span> · View Cart ›</div>
+    </div>
+  </div>
+
+  <!-- ============ CART SHEET ============ -->
+  <div class="overlay" id="cartOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3>Your Cart</h3>
+        <button class="close-x" onclick="closeOverlay('cartOverlay')">✕</button>
+      </div>
+      <div id="cartItemsList"></div>
+      <div id="billSummary"></div>
+      <div id="minOrderWarn"></div>
+      <div class="cod-box" id="codNotice" style="display:none;">
+        💵 <div><strong>Cash on Delivery only.</strong> Pay in cash when your order arrives at your doorstep.</div>
+      </div>
+      <button class="primary-btn" id="goCheckoutBtn" onclick="showCheckout()" style="display:none;">Proceed to Checkout</button>
+    </div>
+  </div>
+
+  <!-- ============ CHECKOUT SHEET ============ -->
+  <div class="overlay" id="checkoutOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3>Delivery Details</h3>
+        <button class="close-x" onclick="closeOverlay('checkoutOverlay')">✕</button>
+      </div>
+      <div class="field">
+        <label>Full Name</label>
+        <input id="custName" placeholder="Your full name">
+      </div>
+      <div class="field">
+        <label>Phone Number</label>
+        <input id="custPhone" placeholder="98XXXXXXXX">
+      </div>
+      <div class="field">
+        <label>Delivery Address / Landmark (Birgunj)</label>
+        <textarea id="custAddress" rows="2" placeholder="Ward no., Tole, nearby landmark"></textarea>
+      </div>
+      <div class="loc-box" id="checkoutLocBox">
+        📍 <div><strong>Live location:</strong> <span id="liveLocText">Fetching current GPS location…</span><br>This location is automatically shared with Yuwa Mart so we can find you accurately.</div>
+      </div>
+      <div class="field">
+        <label>Payment Method</label>
+        <select disabled style="background:#F3F0E8; color:var(--grey);">
+          <option>Cash on Delivery (COD)</option>
+        </select>
+      </div>
+      <button class="primary-btn" onclick="placeOrder()">Confirm Order</button>
+    </div>
+  </div>
+
+  <!-- ============ ORDER CONFIRMATION + OTP ============ -->
+  <div class="overlay" id="statusOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3>Order Status</h3>
+        <button class="close-x" onclick="closeAllToHome()">✕</button>
+      </div>
+      <div class="status-wrap">
+        <div class="big-ico">✅</div>
+        <h2>Your order is confirmed!</h2>
+        <p id="orderIdText">Order #YM1042 · Rs. 0 · Cash on Delivery</p>
+        <div class="otp-box">
+          <div class="otp-label">📩 Order Confirmation OTP (sent to your phone)</div>
+          <div class="otp-digits" id="otpDigits">0000</div>
+        </div>
+        <div class="eta-pill" id="statusEta">Arriving in ~25 min</div>
+      </div>
+      <div class="track-steps" id="trackSteps"></div>
+    </div>
+  </div>
+
+  <!-- ============ MY ORDERS (customer) ============ -->
+  <div class="overlay" id="myOrdersOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3>My Orders</h3>
+        <button class="close-x" onclick="closeOverlay('myOrdersOverlay')">✕</button>
+      </div>
+      <div id="myOrdersList"></div>
+    </div>
+  </div>
+
+  <!-- ============ OWNER LOGIN ============ -->
+  <div class="overlay" id="ownerLoginOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3>Owner Login</h3>
+        <button class="close-x" onclick="closeOverlay('ownerLoginOverlay')">✕</button>
+      </div>
+      <div class="field">
+        <label>Owner Password</label>
+        <input type="password" id="ownerPassInput" placeholder="Enter password">
+      </div>
+      <button class="primary-btn" onclick="checkOwnerPassword()">Login</button>
+      <p style="font-size:11.5px; color:var(--grey); margin-top:10px; text-align:center;">Owner password is set in the server .env file.</p>
+    </div>
+  </div>
+
+  <!-- ============ OWNER DASHBOARD ============ -->
+  <div class="overlay" id="ownerDashOverlay">
+    <div class="sheet" style="max-height:92vh;">
+      <div class="sheet-head">
+        <h3>Owner Dashboard</h3>
+        <button class="close-x" onclick="ownerLogout()">✕</button>
+      </div>
+      <div class="tab-row">
+        <button class="tab-btn active" id="tabProductsBtn" onclick="switchOwnerTab('products')">📦 Products</button>
+        <button class="tab-btn" id="tabOrdersBtn" onclick="switchOwnerTab('orders')">🧾 Orders</button>
+        <button class="tab-btn" id="tabCustomersBtn" onclick="switchOwnerTab('customers')">👥 Customers</button>
+      </div>
+      <div id="ownerTabContent"></div>
+    </div>
+  </div>
+
+</div>
+
+
+<script>
+/* ================= STATE ================= */
+let SERVICE_CONFIG = { zones: [
+  { name:'Birgunj', center:{ lat: 27.0104, lng: 84.8807 }, radiusKm: 14 },
+  { name:'Pakaha Mainpur Municipality', center:{ lat: 27.0200, lng: 84.7300 }, radiusKm: 6 },
+], minOrder: 100 };
+let token = localStorage.getItem('ym_token') || null;
+let currentUser = JSON.parse(localStorage.getItem('ym_user') || 'null');
+let adminToken = null;
+
+let products = [];   // type === 'grocery'
+let fastfood = [];   // type === 'fastfood'
+let cart = {};        // { productId: qty }
+let activeCat = 'all';
+let userLocation = null; // { lat, lng, address, distanceKm }
+let editingProductId = null;
+
+const categories = [
+  {id:'veg',      label:'Vegetables',            ico:'🥦', color:'#3C7A4E'},
+  {id:'fruit',    label:'Fruits',                ico:'🍎', color:'#C7622D'},
+  {id:'dairy',    label:'Dairy & Eggs',          ico:'🥛', color:'#4472A8'},
+  {id:'grain',    label:'Rice, Pulses & Flour',  ico:'🌾', color:'#A97C34'},
+  {id:'spice',    label:'Spices & Masala',       ico:'🌶️', color:'#B3401F'},
+  {id:'oil',      label:'Oil & Ghee',            ico:'🛢️', color:'#C99A1E'},
+  {id:'snack',    label:'Snacks & Namkeen',      ico:'🍪', color:'#A6522C'},
+  {id:'bev',      label:'Beverages & Tea',       ico:'🧃', color:'#2F6E5C'},
+  {id:'bakery',   label:'Bakery',                ico:'🍞', color:'#B5793A'},
+  {id:'meat',     label:'Meat & Fish',           ico:'🍗', color:'#8C2F2F'},
+  {id:'personal', label:'Personal Care',         ico:'🧴', color:'#5A6EAA'},
+  {id:'home',     label:'Household',             ico:'🧹', color:'#5C6B5E'},
+];
+
+/* ================= UTILITY ================= */
+function money(n){ return 'Rs. ' + Math.round(n); }
+function toRad(v){ return v * Math.PI / 180; }
+function haversineKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function computeEtaMinutes(distanceKm){
+  return Math.max(15, Math.min(60, Math.round(15 + distanceKm * 2.5)));
+}
+function checkServiceArea(lat, lng){
+  let nearestDistance = Infinity, inside = false, zone = null;
+  for(const z of SERVICE_CONFIG.zones){
+    const d = haversineKm(lat, lng, z.center.lat, z.center.lng);
+    if(d < nearestDistance) nearestDistance = d;
+    if(d <= z.radiusKm){ inside = true; zone = z.name; }
+  }
+  return { inside, distanceKm: nearestDistance, zone };
+}
+function catColor(catId){ const c = categories.find(x=>x.id===catId); return c ? c.color : '#8C2F2F'; }
+function phImg(name, color){
+  const letter = (name || '?').trim().charAt(0).toUpperCase();
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><rect width='300' height='300' fill='${color}'/><text x='50%' y='56%' font-family='Arial, sans-serif' font-size='120' fill='rgba(255,255,255,0.88)' text-anchor='middle' dominant-baseline='middle'>${letter}</text></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+function productImgSrc(p){
+  if(p.image_url && p.image_url.trim()) return p.image_url;
+  return phImg(p.name, catColor(p.category || 'fastfood'));
+}
+async function reverseGeocode(lat, lng){
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`);
+    const data = await res.json();
+    if(data && data.display_name) return data.display_name;
+  }catch(e){}
+  return `Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
+}
+function authHeaders(){ return token ? { 'Authorization': 'Bearer ' + token } : {}; }
+function adminHeaders(){ return adminToken ? { 'Authorization': 'Bearer ' + adminToken } : {}; }
+
+/* ================= LOCATION GATE ================= */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+async function loadConfig(){
+  try{
+    const res = await fetch('/api/orders/config');
+    const data = await res.json();
+    SERVICE_CONFIG = { zones: data.zones, minOrder: data.minOrder };
+  }catch(e){ /* keep defaults */ }
+}
+
+function startLocationCheck(){
+  showScreen('screen-loading');
+  if(!navigator.geolocation){ showScreen('screen-permission'); return; }
+  navigator.geolocation.getCurrentPosition(async (pos)=>{
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    const areaCheck = checkServiceArea(lat, lng);
+    if(areaCheck.inside){
+      const address = await reverseGeocode(lat, lng);
+      userLocation = { lat, lng, address, distanceKm: areaCheck.distanceKm };
+      afterLocationOk();
+    } else {
+      showScreen('screen-blocked');
+    }
+  }, ()=>{ showScreen('screen-permission'); }, { enableHighAccuracy:true, timeout:12000 });
+}
+
+async function afterLocationOk(){
+  if(token){
+    try{
+      const res = await fetch('/api/auth/me', { headers: authHeaders() });
+      if(res.ok){
+        const data = await res.json();
+        currentUser = data.user;
+        localStorage.setItem('ym_user', JSON.stringify(currentUser));
+        await enterMainApp();
+        return;
+      }
+    }catch(e){}
+  }
+  showScreen('screen-auth');
+}
+
+/* ================= AUTH ================= */
+function switchAuthTab(tab){
+  document.getElementById('tabSignup').classList.toggle('active', tab==='signup');
+  document.getElementById('tabLogin').classList.toggle('active', tab==='login');
+  document.getElementById('signupForm').style.display = tab==='signup' ? 'block' : 'none';
+  document.getElementById('loginForm').style.display = tab==='login' ? 'block' : 'none';
+}
+
+async function doSignup(){
+  const name = document.getElementById('suName').value.trim();
+  const contact = document.getElementById('suContact').value.trim();
+  const password = document.getElementById('suPassword').value;
+  if(!name || !contact || password.length < 4){
+    alert('Please enter your name, a valid email/phone, and a password of at least 4 characters.');
+    return;
+  }
+  const res = await fetch('/api/auth/signup', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name, contact, password })
+  });
+  const data = await res.json();
+  if(!res.ok){ alert(data.error || 'Signup failed.'); return; }
+  token = data.token; currentUser = data.user;
+  localStorage.setItem('ym_token', token);
+  localStorage.setItem('ym_user', JSON.stringify(currentUser));
+  await enterMainApp();
+}
+
+async function doLogin(){
+  const contact = document.getElementById('liContact').value.trim();
+  const password = document.getElementById('liPassword').value;
+  const res = await fetch('/api/auth/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ contact, password })
+  });
+  const data = await res.json();
+  if(!res.ok){ alert(data.error || 'Login failed.'); return; }
+  token = data.token; currentUser = data.user;
+  localStorage.setItem('ym_token', token);
+  localStorage.setItem('ym_user', JSON.stringify(currentUser));
+  await enterMainApp();
+}
+
+async function enterMainApp(){
+  showScreen('screen-main');
+  document.getElementById('headerAddr').textContent = userLocation ? userLocation.address : 'Birgunj, Parsa';
+  const eta = userLocation ? computeEtaMinutes(userLocation.distanceKm) : 25;
+  document.getElementById('headerEta').textContent = '~' + eta + ' min';
+  await loadProducts();
+  renderCats();
+  renderFastFoodStrip();
+  renderProducts();
+  refreshAll();
+}
+
+/* ================= PRODUCTS (from API) ================= */
+async function loadProducts(){
+  try{
+    const res = await fetch('/api/products');
+    const all = await res.json();
+    products = all.filter(p => p.type === 'grocery');
+    fastfood = all.filter(p => p.type === 'fastfood');
+  }catch(e){
+    console.error('Failed to load products', e);
+  }
+}
+function findProduct(id){
+  return products.find(p=>p.id==id) || fastfood.find(p=>p.id==id);
+}
+
+/* ================= RENDER: CATEGORIES ================= */
+function renderCats(){
+  let html = `<div class="cat-chip ${activeCat==='all'?'active':''}" onclick="setCat('all')">
+      <div class="ico">🛒</div><div class="lbl">All Items</div></div>`;
+  categories.forEach(c=>{
+    html += `<div class="cat-chip ${activeCat===c.id?'active':''}" onclick="setCat('${c.id}')">
+      <div class="ico">${c.ico}</div><div class="lbl">${c.label}</div></div>`;
+  });
+  document.getElementById('catScroll').innerHTML = html;
+}
+function setCat(id){
+  activeCat = id;
+  document.getElementById('gridTitle').firstChild.textContent = id==='all' ? 'All Groceries' : categories.find(c=>c.id===id).label;
+  renderCats();
+  renderProducts();
+}
+
+/* ================= RENDER: FAST FOOD STRIP ================= */
+function renderFastFoodStrip(){
+  const el = document.getElementById('ffScroll');
+  el.innerHTML = fastfood.map(p=>{
+    const qty = cart[p.id] || 0;
+    return `
+    <div class="ff-card">
+      <img class="ph ff-img" src="${productImgSrc(p)}" alt="${p.name}">
+      <div class="ff-body">
+        <div class="ff-name">${p.name}</div>
+        <div class="ff-price">${money(p.price)}</div>
+        ${qty===0
+          ? `<button class="ff-add" onclick="addItem(${p.id})">Add to Cart</button>`
+          : `<div class="qty-ctrl" style="width:100%; justify-content:center; margin-top:6px;">
+              <button onclick="removeItem(${p.id})">−</button><span class="qn">${qty}</span><button onclick="addItem(${p.id})">+</button>
+            </div>`
+        }
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ================= RENDER: PRODUCT GRID ================= */
+function renderProducts(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  let list = products.filter(p => activeCat==='all' || p.category===activeCat);
+  if(q) list = list.filter(p=>p.name.toLowerCase().includes(q));
+  const grid = document.getElementById('productGrid');
+  if(list.length===0){
+    grid.innerHTML = `<div style="grid-column:1/3; text-align:center; color:var(--grey); padding:30px 0; font-size:13px;">No items found.</div>`;
+    return;
+  }
+  grid.innerHTML = list.map(p=>{
+    const qty = cart[p.id] || 0;
+    const disc = p.old_price ? Math.round((1 - p.price/p.old_price)*100) : null;
+    return `
+    <div class="card">
+      ${disc ? `<div class="discount">${disc}% OFF</div>` : `<div class="organic-tag">Fresh</div>`}
+      <div class="imgwrap"><img class="ph" src="${productImgSrc(p)}" alt="${p.name}"></div>
+      <div class="info">
+        <div class="weight">${p.weight}</div>
+        <div class="name">${p.name}</div>
+        <div class="pricerow">
+          <div class="price-block">
+            <span class="price-now">${money(p.price)}</span>
+            ${p.old_price ? `<span class="price-old">${money(p.old_price)}</span>` : ''}
+          </div>
+          ${qty===0
+            ? `<button class="add-btn" onclick="addItem(${p.id})">ADD</button>`
+            : `<div class="qty-ctrl"><button onclick="removeItem(${p.id})">−</button><span class="qn">${qty}</span><button onclick="addItem(${p.id})">+</button></div>`
+          }
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ================= CART LOGIC ================= */
+function addItem(id){ cart[id] = (cart[id]||0) + 1; refreshAll(); }
+function removeItem(id){
+  if(!cart[id]) return;
+  cart[id]--;
+  if(cart[id]<=0) delete cart[id];
+  refreshAll();
+}
+function cartTotals(){
+  let count=0, total=0;
+  Object.entries(cart).forEach(([id,qty])=>{
+    const item = findProduct(id);
+    if(!item) return;
+    count += qty; total += item.price*qty;
+  });
+  return {count, total};
+}
+function refreshAll(){
+  renderProducts();
+  renderFastFoodStrip();
+  const {count, total} = cartTotals();
+  const bar = document.getElementById('cartBar');
+  if(count>0){
+    bar.classList.add('show');
+    document.getElementById('cartCount').textContent = `${count} item${count>1?'s':''}`;
+    document.getElementById('cartWeight').textContent = total < SERVICE_CONFIG.minOrder ? `Add Rs. ${SERVICE_CONFIG.minOrder-total} more to order` : 'Minimum order reached';
+    document.getElementById('cartTotalMini').textContent = Math.round(total);
+  } else {
+    bar.classList.remove('show');
+  }
+  renderCartSheet();
+}
+
+function renderCartSheet(){
+  const listEl = document.getElementById('cartItemsList');
+  const billEl = document.getElementById('billSummary');
+  const warnEl = document.getElementById('minOrderWarn');
+  const entries = Object.entries(cart);
+  if(entries.length===0){
+    listEl.innerHTML = `<div class="empty-cart">Your cart is empty. Start adding fresh groceries!</div>`;
+    billEl.innerHTML = ''; warnEl.innerHTML = '';
+    document.getElementById('codNotice').style.display='none';
+    document.getElementById('goCheckoutBtn').style.display='none';
+    return;
+  }
+  listEl.innerHTML = entries.map(([id,qty])=>{
+    const item = findProduct(id);
+    if(!item) return '';
+    return `<div class="cart-line">
+      <div class="thumb"><img class="ph" src="${productImgSrc(item)}" alt=""></div>
+      <div class="info"><div class="nm">${item.name}</div><div class="pr">${money(item.price)} × ${qty}</div></div>
+      <div class="qty-ctrl" style="background:var(--forest);">
+        <button onclick="removeItem(${id})">−</button><span class="qn">${qty}</span><button onclick="addItem(${id})">+</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const {total} = cartTotals();
+  const deliveryFee = total >= 500 ? 0 : 25;
+  const grandTotal = total + deliveryFee;
+  billEl.innerHTML = `
+    <div class="bill-row"><span>Item Total</span><span>${money(total)}</span></div>
+    <div class="bill-row"><span>Delivery Fee</span><span>${deliveryFee===0?'FREE':money(deliveryFee)}</span></div>
+    <div class="bill-row total"><span>Total Payable (COD)</span><span>${money(grandTotal)}</span></div>
+  `;
+  if(total < SERVICE_CONFIG.minOrder){
+    warnEl.innerHTML = `<div class="min-order-warn">⚠️ Minimum order amount is Rs. ${SERVICE_CONFIG.minOrder}. Please add Rs. ${SERVICE_CONFIG.minOrder-total} more worth of items to proceed.</div>`;
+    document.getElementById('codNotice').style.display='none';
+    document.getElementById('goCheckoutBtn').style.display='none';
+  } else {
+    warnEl.innerHTML = '';
+    document.getElementById('codNotice').style.display='flex';
+    document.getElementById('goCheckoutBtn').style.display='block';
+  }
+}
+
+/* ================= OVERLAYS ================= */
+function openCart(){ document.getElementById('cartOverlay').classList.add('show'); }
+function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
+
+function showCheckout(){
+  closeOverlay('cartOverlay');
+  document.getElementById('checkoutOverlay').classList.add('show');
+  if(currentUser){
+    document.getElementById('custName').value = currentUser.name;
+    if(/^\d+$/.test(currentUser.contact)) document.getElementById('custPhone').value = currentUser.contact;
+  }
+  document.getElementById('liveLocText').textContent = 'Fetching current GPS location…';
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(async (pos)=>{
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      const address = await reverseGeocode(lat, lng);
+      userLocation = { ...userLocation, lat, lng, address, distanceKm: checkServiceArea(lat,lng).distanceKm };
+      document.getElementById('liveLocText').textContent = address;
+    }, ()=>{
+      document.getElementById('liveLocText').textContent = userLocation ? userLocation.address : 'Location unavailable — please describe your address above.';
+    });
+  }
+}
+
+/* ================= PLACE ORDER ================= */
+async function placeOrder(){
+  const name = document.getElementById('custName').value.trim();
+  const phone = document.getElementById('custPhone').value.trim();
+  const addr = document.getElementById('custAddress').value.trim();
+  if(!name || !phone || !addr){ alert('Please fill in your name, phone number, and address.'); return; }
+  if(!userLocation || typeof userLocation.lat !== 'number'){
+    alert('We could not detect your live location. Please allow location access and try again.');
+    return;
+  }
+  const items = Object.entries(cart).map(([id,qty])=>{
+    const item = findProduct(id);
+    return { name:item.name, price:item.price, qty };
+  });
+
+  const res = await fetch('/api/orders', {
+    method:'POST',
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
+    body: JSON.stringify({
+      name, phone, address: addr,
+      lat: userLocation.lat, lng: userLocation.lng, gps_address: userLocation.address,
+      items
+    })
+  });
+  const data = await res.json();
+  if(!res.ok){ alert(data.error || 'Could not place order.'); return; }
+
+  document.getElementById('orderIdText').textContent = `Order #${data.id} · ${money(data.grandTotal)} · Cash on Delivery`;
+  document.getElementById('otpDigits').textContent = data.otp;
+  document.getElementById('statusEta').textContent = `Arriving in ~${data.etaMin} min`;
+
+  closeOverlay('checkoutOverlay');
+  document.getElementById('statusOverlay').classList.add('show');
+  renderTrackSteps(data.etaMin);
+
+  cart = {};
+  refreshAll();
+}
+
+function renderTrackSteps(etaMin){
+  const steps = [
+    {label:'Order confirmed', time:'Just now', state:'done'},
+    {label:'Packing your order', time:'In 2-3 min', state:'active'},
+    {label:'Out for delivery', time:`In ~${Math.max(5, etaMin-10)} min`, state:''},
+    {label:'Delivered to your address', time:`In ~${etaMin} min`, state:''},
+  ];
+  document.getElementById('trackSteps').innerHTML = steps.map(s=>`
+    <div class="track-step ${s.state}">
+      <div class="dot">${s.state==='done'?'✓':''}</div>
+      <div><div class="tlabel">${s.label}</div><div class="ttime">${s.time}</div></div>
+    </div>
+  `).join('');
+}
+function closeAllToHome(){ closeOverlay('statusOverlay'); }
+
+/* ================= MY ORDERS ================= */
+async function openMyOrders(){
+  const el = document.getElementById('myOrdersList');
+  if(!token){
+    el.innerHTML = `<div class="no-data">Please log in to see your orders.</div>`;
+    document.getElementById('myOrdersOverlay').classList.add('show');
+    return;
+  }
+  const res = await fetch('/api/orders/mine', { headers: authHeaders() });
+  const mine = await res.json();
+  if(!res.ok || mine.length===0){
+    el.innerHTML = `<div class="no-data">You haven't placed any orders yet.</div>`;
+  } else {
+    el.innerHTML = mine.map(o => `
+      <div class="order-card">
+        <div class="ohead"><span>#${o.id}</span><span class="otime">${new Date(o.created_at).toLocaleString()}</span></div>
+        <div class="oitems">${o.items.map(it=>`${it.name} × ${it.qty}`).join('<br>')}</div>
+        <div class="ocust"><strong>Total: ${money(o.grand_total)}</strong> · Status: <strong>${o.status}</strong></div>
+      </div>
+    `).join('');
+  }
+  document.getElementById('myOrdersOverlay').classList.add('show');
+}
+
+/* ================= OWNER PANEL ================= */
+function openOwnerLogin(){ document.getElementById('ownerLoginOverlay').classList.add('show'); }
+
+async function checkOwnerPassword(){
+  const val = document.getElementById('ownerPassInput').value;
+  const res = await fetch('/api/auth/admin-login', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: val })
+  });
+  const data = await res.json();
+  if(!res.ok){ alert(data.error || 'Incorrect password.'); return; }
+  adminToken = data.token;
+  document.getElementById('ownerPassInput').value = '';
+  closeOverlay('ownerLoginOverlay');
+  openOwnerDashboard();
+}
+function openOwnerDashboard(){
+  document.getElementById('ownerDashOverlay').classList.add('show');
+  switchOwnerTab('products');
+}
+function ownerLogout(){ closeOverlay('ownerDashOverlay'); editingProductId = null; adminToken = null; }
+
+function switchOwnerTab(tab){
+  document.getElementById('tabProductsBtn').classList.toggle('active', tab==='products');
+  document.getElementById('tabOrdersBtn').classList.toggle('active', tab==='orders');
+  document.getElementById('tabCustomersBtn').classList.toggle('active', tab==='customers');
+  if(tab==='products') renderOwnerProducts();
+  else if(tab==='orders') renderOwnerOrders();
+  else renderOwnerCustomers();
+}
+
+function categoryOptionsHtml(selectedCat){
+  let opts = categories.map(c=>`<option value="${c.id}" ${c.id===selectedCat?'selected':''}>${c.label}</option>`).join('');
+  opts += `<option value="fastfood" ${selectedCat==='fastfood'?'selected':''}>Fast Food</option>`;
+  return opts;
+}
+
+function renderOwnerProducts(){
+  const editItem = editingProductId ? findProduct(editingProductId) : null;
+  const content = document.getElementById('ownerTabContent');
+  content.innerHTML = `
+    <div class="owner-form-box">
+      <h4>${editItem ? '✏️ Edit product' : '➕ Add a new product'}</h4>
+      <div class="field"><label>Product Name</label>
+        <input id="opName" value="${editItem ? editItem.name : ''}" placeholder="e.g. Fresh Potato (1 kg)"></div>
+      <div class="form-row2">
+        <div class="field"><label>Category</label>
+          <select id="opCat">${categoryOptionsHtml(editItem ? (editItem.type==='fastfood'?'fastfood':editItem.category) : categories[0].id)}</select></div>
+        <div class="field"><label>Weight / Quantity</label>
+          <input id="opWeight" value="${editItem ? editItem.weight : ''}" placeholder="e.g. 1 kg, 6 pcs"></div>
+      </div>
+      <div class="form-row2">
+        <div class="field"><label>Price (Rs.)</label>
+          <input id="opPrice" type="number" value="${editItem ? editItem.price : ''}" placeholder="e.g. 80"></div>
+        <div class="field"><label>Old Price (optional)</label>
+          <input id="opOld" type="number" value="${editItem && editItem.old_price ? editItem.old_price : ''}" placeholder="For discount tag"></div>
+      </div>
+      <div class="field"><label>Upload Real Product Photo</label>
+        <input id="opPhotoFile" type="file" accept="image/*"></div>
+      <div class="field"><label>Or paste a Photo URL instead (optional)</label>
+        <input id="opImg" value="${editItem && editItem.image_url ? editItem.image_url : ''}" placeholder="https://..."></div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="primary-btn" style="margin-top:0;" onclick="saveOwnerProduct()">${editItem ? 'Save Changes' : 'Add Product'}</button>
+        ${editItem ? `<button class="icon-btn" style="width:auto; padding:0 14px;" onclick="cancelEditProduct()">Cancel</button>` : ''}
+      </div>
+    </div>
+    <h4 style="font-size:13px; color:var(--forest-deep); margin-bottom:4px;">Groceries (${products.length})</h4>
+    <div id="ownerProductList"></div>
+    <h4 style="font-size:13px; color:var(--forest-deep); margin:14px 0 4px;">Fast Food (${fastfood.length})</h4>
+    <div id="ownerFastFoodList"></div>
+  `;
+  const rowHtml = (pr) => `
+    <div class="owner-prod-row">
+      <div class="thumb"><img class="ph" src="${productImgSrc(pr)}" alt=""></div>
+      <div class="opinfo">
+        <div class="opname">${pr.name}</div>
+        <div class="opmeta">${pr.type==='fastfood' ? 'Fast Food' : (categories.find(c=>c.id===pr.category)?.label || pr.category)} · ${money(pr.price)}${pr.old_price ? ' (was '+money(pr.old_price)+')' : ''} · ${pr.weight}</div>
+      </div>
+      <div class="op-actions">
+        <button class="icon-btn" onclick="startEditProduct(${pr.id})">✏️</button>
+        <button class="icon-btn danger" onclick="deleteOwnerProduct(${pr.id})">🗑️</button>
+      </div>
+    </div>`;
+  document.getElementById('ownerProductList').innerHTML = products.map(rowHtml).join('');
+  document.getElementById('ownerFastFoodList').innerHTML = fastfood.map(rowHtml).join('');
+}
+
+function startEditProduct(id){ editingProductId = id; renderOwnerProducts(); }
+function cancelEditProduct(){ editingProductId = null; renderOwnerProducts(); }
+
+async function saveOwnerProduct(){
+  const name = document.getElementById('opName').value.trim();
+  const cat = document.getElementById('opCat').value;
+  const weight = document.getElementById('opWeight').value.trim();
+  const price = document.getElementById('opPrice').value;
+  const old_price = document.getElementById('opOld').value;
+  const imageUrl = document.getElementById('opImg').value.trim();
+  const photoFile = document.getElementById('opPhotoFile').files[0];
+
+  if(!name || !weight || !price || parseFloat(price)<=0){
+    alert('Please fill in name, weight, and a valid price.');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('type', cat === 'fastfood' ? 'fastfood' : 'grocery');
+  fd.append('category', cat === 'fastfood' ? 'fastfood' : cat);
+  fd.append('name', name);
+  fd.append('weight', weight);
+  fd.append('price', price);
+  if(old_price) fd.append('old_price', old_price);
+  if(imageUrl) fd.append('image_url', imageUrl);
+  if(photoFile) fd.append('photo', photoFile);
+
+  const url = editingProductId ? `/api/products/${editingProductId}` : '/api/products';
+  const method = editingProductId ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: adminHeaders(), body: fd });
+  const data = await res.json();
+  if(!res.ok){ alert(data.error || 'Could not save product.'); return; }
+
+  editingProductId = null;
+  await loadProducts();
+  renderOwnerProducts();
+  renderProducts(); renderFastFoodStrip();
+}
+
+async function deleteOwnerProduct(id){
+  if(!confirm('Delete this product?')) return;
+  const res = await fetch(`/api/products/${id}`, { method:'DELETE', headers: adminHeaders() });
+  if(!res.ok){ const data = await res.json(); alert(data.error || 'Could not delete product.'); return; }
+  if(editingProductId===id) editingProductId = null;
+  await loadProducts();
+  renderOwnerProducts();
+  renderProducts(); renderFastFoodStrip();
+}
+
+async function renderOwnerOrders(){
+  const content = document.getElementById('ownerTabContent');
+  const res = await fetch('/api/orders', { headers: adminHeaders() });
+  const allOrders = await res.json();
+  if(!res.ok || allOrders.length===0){
+    content.innerHTML = `<div class="no-data">No orders yet.</div>`;
+    return;
+  }
+  content.innerHTML = allOrders.map((o) => `
+    <div class="order-card">
+      <div class="ohead"><span>#${o.id}</span><span class="otime">${new Date(o.created_at).toLocaleString()}</span></div>
+      <div class="ocust">
+        👤 ${o.name} (${o.customer_id || 'Guest'}) · 📞 ${o.phone}<br>
+        📍 Address entered: ${o.address}<br>
+        ${o.gps_address ? `🛰️ GPS location: ${o.gps_address}` : ''}
+      </div>
+      ${(o.lat && o.lng) ? `<a class="map-link" target="_blank" href="https://www.google.com/maps?q=${o.lat},${o.lng}">View exact location on map ↗</a>` : ''}
+      <div class="oitems">
+        ${o.items.map(it => `${it.name} × ${it.qty} — ${money(it.price * it.qty)}`).join('<br>')}
+        <br><strong style="color:var(--ink);">Total (COD): ${money(o.grand_total)}</strong> · OTP: <strong>${o.otp}</strong> · ETA: ${o.eta_min} min
+      </div>
+      <select onchange="updateOrderStatus('${o.id}', this.value)">
+        ${['Confirmed','Packed','Out for Delivery','Delivered'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+  `).join('');
+}
+async function updateOrderStatus(id, status){
+  await fetch(`/api/orders/${id}/status`, {
+    method:'PUT', headers:{ 'Content-Type':'application/json', ...adminHeaders() }, body: JSON.stringify({ status })
+  });
+}
+
+async function renderOwnerCustomers(){
+  const content = document.getElementById('ownerTabContent');
+  const res = await fetch('/api/users', { headers: adminHeaders() });
+  const list = await res.json();
+  if(!res.ok || list.length===0){
+    content.innerHTML = `<div class="no-data">No customers registered yet.</div>`;
+    return;
+  }
+  content.innerHTML = list.map(u => `
+    <div class="cust-row">
+      <div><span class="cid">${u.id}</span><br>${u.name}<br><span style="color:var(--grey);">${u.contact}</span></div>
+      <div style="text-align:right; color:var(--grey);">Joined<br>${new Date(u.joined_at).toLocaleDateString()}</div>
+    </div>
+  `).join('');
+}
+
+/* ================= INIT ================= */
+document.getElementById('searchInput').addEventListener('input', renderProducts);
+(async function init(){
+  await loadConfig();
+  startLocationCheck();
+})();
+</script>
+</body>
+</html>
