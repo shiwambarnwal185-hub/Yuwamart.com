@@ -87,6 +87,29 @@ router.post('/', optionalAuth, async (req, res) => {
   const insertItem = db.prepare('INSERT INTO order_items (order_id, product_name, price, qty) VALUES (?, ?, ?, ?)');
   const insertMany = db.transaction((rows) => { for (const it of rows) insertItem.run(orderId, it.name, it.price, it.qty); });
   insertMany(items);
+  // Admin Email Notification
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: 'shiwambarnwal185@gmail.com',
+    subject: `🛒 Yuwa Mart - Naya Order Aaya Hai (${name || 'Grahak'})`,
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+        <h2 style="color: #2e7d32;">🛒 Yuwa Mart Par Naya Order Aaya Hai!</h2>
+        <hr />
+        <p><strong>Grahak ka Naam:</strong> ${name}</p>
+        <p><strong>Phone Number:</strong> ${phone}</p>
+        <p><strong>Pata:</strong> ${address}</p>
+        <hr />
+        <h3>Order Details:</h3>
+        <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">${JSON.stringify(req.body, null, 2)}</pre>
+      </div>
+    `
+  };
+
+  transporter.sendMail(mailOptions, (err, info) => {
+    if (err) console.log('Email Error:', err);
+    else console.log('Email Sent Successfully:', info.response);
+  });
 
   sendSms(phone, `Yuwa Mart: Your order #${orderId} is confirmed! Total Rs.${grandTotal} (COD). OTP: ${otp}. Arriving in ~${etaMin} min.`)
     .catch(() => {});
