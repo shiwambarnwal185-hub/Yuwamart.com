@@ -71,7 +71,7 @@ router.post('/', optionalAuth, async (req, res) => {
   if (itemTotal < MIN_ORDER_AMOUNT) {
     return res.status(400).json({ error: `Minimum order amount is Rs. ${MIN_ORDER_AMOUNT}.` });
   }
-  const deliveryFee = itemTotal >= 500 ? 0 : 25;
+  const deliveryFee = 30;
   const grandTotal = itemTotal + deliveryFee;
   const etaMin = computeEtaMinutes(distanceKm);
   const otp = String(Math.floor(1000 + Math.random() * 9000));
