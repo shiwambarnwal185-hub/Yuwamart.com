@@ -311,6 +311,17 @@
   .map-link{ display:inline-block; margin-top:8px; font-size:12px; font-weight:700; color:var(--forest); text-decoration:none; border:1px solid var(--forest); border-radius:7px; padding:5px 10px;}
   .no-data{ text-align:center; color:var(--grey); font-size:13px; padding:30px 0;}
   .cust-row{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:12.5px;}
+  .contact-row{
+    display:flex; align-items:center; gap:14px; padding:14px 4px;
+    border-bottom:1px solid var(--line); text-decoration:none; color:var(--ink);
+  }
+  .contact-row .cico{
+    width:42px; height:42px; border-radius:50%; background:var(--forest-light);
+    display:flex; align-items:center; justify-content:center; font-size:20px; flex:0 0 auto;
+  }
+  .contact-row .clabel{ font-size:11px; color:var(--grey); font-weight:700;}
+  .contact-row .cvalue{ font-size:14px; font-weight:700; margin-top:2px; word-break:break-word;}
+  .no-contact-msg{ text-align:center; color:var(--grey); font-size:13px; padding:24px 10px;}
   .cust-row .cid{ font-weight:800; color:var(--forest);}
 </style>
 </head>
@@ -406,6 +417,7 @@
       <div class="toprow">
         <div class="brand">Yuwa <span>Mart</span></div>
         <div class="head-icons">
+          <button class="icon-pill" onclick="openContactUs()" title="Contact Us">📞</button>
           <button class="icon-pill" onclick="openMyOrders()">🧾</button>
           <button class="icon-pill" onclick="openOwnerLogin()" title="Owner Login">🔐</button>
         </div>
@@ -543,6 +555,17 @@
     </div>
   </div>
 
+  <!-- ============ CONTACT US ============ -->
+  <div class="overlay" id="contactUsOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3>Contact Us</h3>
+        <button class="close-x" onclick="closeOverlay('contactUsOverlay')">✕</button>
+      </div>
+      <div id="contactUsContent"></div>
+    </div>
+  </div>
+
   <!-- ============ OWNER LOGIN ============ -->
   <div class="overlay" id="ownerLoginOverlay">
     <div class="sheet">
@@ -570,6 +593,7 @@
         <button class="tab-btn active" id="tabProductsBtn" onclick="switchOwnerTab('products')">📦 Products</button>
         <button class="tab-btn" id="tabOrdersBtn" onclick="switchOwnerTab('orders')">🧾 Orders</button>
         <button class="tab-btn" id="tabCustomersBtn" onclick="switchOwnerTab('customers')">👥 Customers</button>
+        <button class="tab-btn" id="tabContactBtn" onclick="switchOwnerTab('contact')">📞 Contact</button>
       </div>
       <div id="ownerTabContent"></div>
     </div>
@@ -1046,9 +1070,11 @@ function switchOwnerTab(tab){
   document.getElementById('tabProductsBtn').classList.toggle('active', tab==='products');
   document.getElementById('tabOrdersBtn').classList.toggle('active', tab==='orders');
   document.getElementById('tabCustomersBtn').classList.toggle('active', tab==='customers');
+  document.getElementById('tabContactBtn').classList.toggle('active', tab==='contact');
   if(tab==='products') renderOwnerProducts();
   else if(tab==='orders') renderOwnerOrders();
-  else renderOwnerCustomers();
+  else if(tab==='customers') renderOwnerCustomers();
+  else renderOwnerContactSettings();
 }
 
 function categoryOptionsHtml(selectedCat){
@@ -1203,6 +1229,67 @@ async function renderOwnerCustomers(){
       <div style="text-align:right; color:var(--grey);">Joined<br>${new Date(u.joined_at).toLocaleDateString()}</div>
     </div>
   `).join('');
+}
+
+/* ================= CONTACT US (customer-facing) ================= */
+async function openContactUs(){
+  const el = document.getElementById('contactUsContent');
+  el.innerHTML = `<div class="no-contact-msg">Loading…</div>`;
+  document.getElementById('contactUsOverlay').classList.add('show');
+  try{
+    const res = await fetch('/api/settings/contact');
+    const c = await res.json();
+    const rows = [];
+    if(c.contact_phone) rows.push(`<a class="contact-row" href="tel:${c.contact_phone}"><div class="cico">📞</div><div><div class="clabel">Call us</div><div class="cvalue">${c.contact_phone}</div></div></a>`);
+    if(c.contact_email) rows.push(`<a class="contact-row" href="mailto:${c.contact_email}"><div class="cico">✉️</div><div><div class="clabel">Email us</div><div class="cvalue">${c.contact_email}</div></div></a>`);
+    if(c.facebook_url) rows.push(`<a class="contact-row" href="${c.facebook_url}" target="_blank"><div class="cico">📘</div><div><div class="clabel">Facebook</div><div class="cvalue">Visit our Page</div></div></a>`);
+    if(c.instagram_url) rows.push(`<a class="contact-row" href="${c.instagram_url}" target="_blank"><div class="cico">📷</div><div><div class="clabel">Instagram</div><div class="cvalue">Follow us</div></div></a>`);
+    if(c.tiktok_url) rows.push(`<a class="contact-row" href="${c.tiktok_url}" target="_blank"><div class="cico">🎵</div><div><div class="clabel">TikTok</div><div class="cvalue">Follow us</div></div></a>`);
+    el.innerHTML = rows.length ? rows.join('') : `<div class="no-contact-msg">Contact details coming soon.</div>`;
+  }catch(e){
+    el.innerHTML = `<div class="no-contact-msg">Could not load contact info.</div>`;
+  }
+}
+
+/* ================= OWNER: CONTACT SETTINGS ================= */
+async function renderOwnerContactSettings(){
+  const content = document.getElementById('ownerTabContent');
+  content.innerHTML = `<div class="no-contact-msg">Loading…</div>`;
+  const res = await fetch('/api/settings/contact');
+  const c = await res.json();
+  content.innerHTML = `
+    <div class="owner-form-box">
+      <h4>📞 Contact Info (shown to customers)</h4>
+      <div class="field"><label>Phone Number</label>
+        <input id="csPhone" value="${c.contact_phone || ''}" placeholder="98XXXXXXXX"></div>
+      <div class="field"><label>Email</label>
+        <input id="csEmail" value="${c.contact_email || ''}" placeholder="you@example.com"></div>
+      <div class="field"><label>Facebook Page URL</label>
+        <input id="csFacebook" value="${c.facebook_url || ''}" placeholder="https://facebook.com/yourpage"></div>
+      <div class="field"><label>Instagram URL</label>
+        <input id="csInstagram" value="${c.instagram_url || ''}" placeholder="https://instagram.com/yourpage"></div>
+      <div class="field"><label>TikTok URL</label>
+        <input id="csTiktok" value="${c.tiktok_url || ''}" placeholder="https://tiktok.com/@yourpage"></div>
+      <button class="primary-btn" onclick="saveContactSettings()">Save Contact Info</button>
+      <div id="csSaveMsg" style="font-size:12px; color:var(--success); margin-top:8px; display:none;">✓ Saved</div>
+    </div>
+  `;
+}
+async function saveContactSettings(){
+  const body = {
+    contact_phone: document.getElementById('csPhone').value.trim(),
+    contact_email: document.getElementById('csEmail').value.trim(),
+    facebook_url: document.getElementById('csFacebook').value.trim(),
+    instagram_url: document.getElementById('csInstagram').value.trim(),
+    tiktok_url: document.getElementById('csTiktok').value.trim(),
+  };
+  const res = await fetch('/api/settings/contact', {
+    method:'PUT', headers:{ 'Content-Type':'application/json', ...adminHeaders() }, body: JSON.stringify(body)
+  });
+  if(!res.ok){ alert('Could not save contact info.'); return; }
+  const msg = document.getElementById('csSaveMsg');
+  msg.style.display = 'block';
+  setTimeout(()=>{ msg.style.display = 'none'; }, 2000);
 }
 
 /* ================= INIT ================= */
