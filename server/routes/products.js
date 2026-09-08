@@ -1,24 +1,16 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const db = require('../db');
+const { pool } = require('../db');
 const { requireAdmin } = require('../middleware');
 
 const router = express.Router();
 
-const uploadsDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, 'product-' + Date.now() + '-' + Math.round(Math.random() * 1e6) + ext);
-  },
-});
+// Photos are kept in memory only long enough to convert them into a
+// base64 "data URI" string, which is then stored directly in the database
+// (in the image_url column) — so photos never live on the server's disk
+// and are never lost on restart/redeploy.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (/^image\//.test(file.mimetype)) cb(null, true);
@@ -26,64 +18,89 @@ const upload = multer({
   },
 });
 
+function fileToDataUri(file) {
+  if (!file) return null;
+  return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+}
+
 // Public: list all products (groceries + fast food)
-router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM products ORDER BY id ASC').all();
-  res.json(rows);
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM products ORDER BY id ASC');
+    res.json(rows);
+  } catch (err) {
+    console.error('list products error:', err.message);
+    res.status(500).json({ error: 'Could not load products.' });
+  }
 });
 
 // Admin: add a product, optionally with an uploaded photo
-router.post('/', requireAdmin, upload.single('photo'), (req, res) => {
-  const { type, category, name, weight, price, old_price } = req.body;
-  if (!name || !weight || !price || isNaN(parseFloat(price))) {
-    return res.status(400).json({ error: 'Please provide name, weight, and a valid price.' });
-  }
-  let imageUrl = req.body.image_url || null;
-  if (req.file) imageUrl = '/uploads/' + req.file.filename;
+router.post('/', requireAdmin, upload.single('photo'), async (req, res) => {
+  try {
+    const { type, category, name, weight, price, old_price } = req.body;
+    if (!name || !weight || !price || isNaN(parseFloat(price))) {
+      return res.status(400).json({ error: 'Please provide name, weight, and a valid price.' });
+    }
+    let imageUrl = req.body.image_url || null;
+    if (req.file) imageUrl = fileToDataUri(req.file);
 
-  const info = db.prepare(`INSERT INTO products (type, category, name, weight, price, old_price, image_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    type === 'fastfood' ? 'fastfood' : 'grocery',
-    type === 'fastfood' ? 'fastfood' : category,
-    name, weight, parseFloat(price), old_price ? parseFloat(old_price) : null, imageUrl
-  );
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
-  res.json(product);
+    const finalType = type === 'fastfood' ? 'fastfood' : 'grocery';
+    const finalCategory = type === 'fastfood' ? 'fastfood' : category;
+
+    const { rows } = await pool.query(
+      `INSERT INTO products (type, category, name, weight, price, old_price, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [finalType, finalCategory, name, weight, parseFloat(price), old_price ? parseFloat(old_price) : null, imageUrl]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('add product error:', err.message);
+    res.status(500).json({ error: 'Could not save product.' });
+  }
 });
 
 // Admin: edit a product, optionally replacing its photo
-router.put('/:id', requireAdmin, upload.single('photo'), (req, res) => {
-  const id = req.params.id;
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
-  if (!existing) return res.status(404).json({ error: 'Product not found.' });
+router.put('/:id', requireAdmin, upload.single('photo'), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const existingRes = await pool.query('SELECT * FROM products WHERE id = $1', [id]);
+    const existing = existingRes.rows[0];
+    if (!existing) return res.status(404).json({ error: 'Product not found.' });
 
-  const { category, name, weight, price, old_price } = req.body;
-  let imageUrl = req.body.image_url !== undefined ? req.body.image_url : existing.image_url;
-  if (req.file) {
-    imageUrl = '/uploads/' + req.file.filename;
-    if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-      const oldPath = path.join(uploadsDir, path.basename(existing.image_url));
-      fs.unlink(oldPath, () => {});
-    }
+    const { category, name, weight, price, old_price } = req.body;
+    let imageUrl = req.body.image_url !== undefined && req.body.image_url !== '' ? req.body.image_url : existing.image_url;
+    if (req.file) imageUrl = fileToDataUri(req.file);
+
+    const { rows } = await pool.query(
+      `UPDATE products SET category = $1, name = $2, weight = $3, price = $4, old_price = $5, image_url = $6 WHERE id = $7 RETURNING *`,
+      [
+        category ?? existing.category,
+        name ?? existing.name,
+        weight ?? existing.weight,
+        price ? parseFloat(price) : existing.price,
+        old_price ? parseFloat(old_price) : null,
+        imageUrl,
+        id,
+      ]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('edit product error:', err.message);
+    res.status(500).json({ error: 'Could not update product.' });
   }
-
-  db.prepare(`UPDATE products SET category = ?, name = ?, weight = ?, price = ?, old_price = ?, image_url = ? WHERE id = ?`)
-    .run(category ?? existing.category, name ?? existing.name, weight ?? existing.weight,
-         price ? parseFloat(price) : existing.price, old_price ? parseFloat(old_price) : null,
-         imageUrl, id);
-
-  res.json(db.prepare('SELECT * FROM products WHERE id = ?').get(id));
 });
 
 // Admin: delete a product
-router.delete('/:id', requireAdmin, (req, res) => {
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Product not found.' });
-  if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-    fs.unlink(path.join(uploadsDir, path.basename(existing.image_url)), () => {});
+router.delete('/:id', requireAdmin, async (req, res) => {
+  try {
+    const existingRes = await pool.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
+    if (!existingRes.rows[0]) return res.status(404).json({ error: 'Product not found.' });
+    await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('delete product error:', err.message);
+    res.status(500).json({ error: 'Could not delete product.' });
   }
-  db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
 });
 
 module.exports = router;

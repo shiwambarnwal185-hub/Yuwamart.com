@@ -1,13 +1,11 @@
 const express = require('express');
-const crypto = require('crypto');
-const db = require('../db');
-const sendSms = require('../sendSms');
+const { pool } = require('../db');
+const sendOrderNotificationEmail = require('../sendEmail');
 const { optionalAuth, requireAuth, requireAdmin } = require('../middleware');
 
 const router = express.Router();
 
 // ---- Service area configuration: Birgunj + Pakaha Mainpur Municipality (Parsa District) ----
-// Two separate zones are checked — an order is accepted if it falls inside EITHER circle.
 const SERVICE_ZONES = [
   {
     name: 'Birgunj',
@@ -34,115 +32,116 @@ function computeEtaMinutes(distanceKm) {
   const mins = 15 + distanceKm * 2.5;
   return Math.max(15, Math.min(60, Math.round(mins)));
 }
-// Checks all service zones and returns whether the point is inside any of them,
-// plus the distance to the nearest zone center (used for the ETA estimate).
 function checkServiceArea(lat, lng) {
   let nearestDistance = Infinity;
   let inside = false;
-  let matchedZone = null;
   for (const zone of SERVICE_ZONES) {
     const d = haversineKm(lat, lng, zone.center.lat, zone.center.lng);
     if (d < nearestDistance) nearestDistance = d;
-    if (d <= zone.radiusKm) { inside = true; matchedZone = zone.name; }
+    if (d <= zone.radiusKm) inside = true;
   }
-  return { inside, distanceKm: nearestDistance, zone: matchedZone };
+  return { inside, distanceKm: nearestDistance };
 }
 
-let nextOrderNumber = (() => {
-  const row = db.prepare('SELECT COUNT(*) AS c FROM orders').get();
-  return 1042 + row.c;
-})();
+async function nextOrderNumber() {
+  const { rows } = await pool.query('SELECT COUNT(*) AS c FROM orders');
+  return 1042 + parseInt(rows[0].c, 10);
+}
 
 router.post('/', optionalAuth, async (req, res) => {
-  const { name, phone, address, lat, lng, gps_address, items } = req.body;
-  if (!name || !phone || !address || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'Name, phone, address, and at least one item are required.' });
+  try {
+    const { name, phone, address, lat, lng, gps_address, items } = req.body;
+    if (!name || !phone || !address || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Name, phone, address, and at least one item are required.' });
+    }
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ error: 'Location is required to place an order.' });
+    }
+    const areaCheck = checkServiceArea(lat, lng);
+    if (!areaCheck.inside) {
+      return res.status(403).json({ error: 'Sorry, we currently deliver only within Birgunj and Pakaha Mainpur Municipality (Parsa District). Your location is outside our delivery area.' });
+    }
+    const distanceKm = areaCheck.distanceKm;
+
+    const itemTotal = items.reduce((sum, it) => sum + it.price * it.qty, 0);
+    if (itemTotal < MIN_ORDER_AMOUNT) {
+      return res.status(400).json({ error: `Minimum order amount is Rs. ${MIN_ORDER_AMOUNT}.` });
+    }
+    const deliveryFee = 30;
+    const grandTotal = itemTotal + deliveryFee;
+    const etaMin = computeEtaMinutes(distanceKm);
+    const otp = String(Math.floor(1000 + Math.random() * 9000));
+    const orderId = 'YM' + (await nextOrderNumber());
+
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, otp, name, phone, address, lat, lng, gps_address,
+                item_total, delivery_fee, grand_total, eta_min, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Confirmed')`,
+      [orderId, req.user ? req.user.id : null, otp, name, phone, address, lat, lng, gps_address || null,
+       itemTotal, deliveryFee, grandTotal, etaMin]
+    );
+
+    for (const it of items) {
+      await pool.query(
+        'INSERT INTO order_items (order_id, product_name, price, qty) VALUES ($1, $2, $3, $4)',
+        [orderId, it.name, it.price, it.qty]
+      );
+    }
+
+    // Email the owner — fire and forget, never blocks the customer's order confirmation
+    sendOrderNotificationEmail({
+      id: orderId, customerId: req.user ? req.user.id : null, name, phone, address,
+      lat, lng, items, itemTotal, deliveryFee, grandTotal, etaMin, otp,
+    }).catch(() => {});
+
+    res.json({ id: orderId, otp, itemTotal, deliveryFee, grandTotal, etaMin, status: 'Confirmed' });
+  } catch (err) {
+    console.error('create order error:', err.message);
+    res.status(500).json({ error: 'Could not place order. Please try again.' });
   }
-  if (typeof lat !== 'number' || typeof lng !== 'number') {
-    return res.status(400).json({ error: 'Location is required to place an order.' });
-  }
-  const areaCheck = checkServiceArea(lat, lng);
-  if (!areaCheck.inside) {
-    return res.status(403).json({ error: 'Sorry, we currently deliver only within Birgunj and Pakaha Mainpur Municipality (Parsa District). Your location is outside our delivery area.' });
-  }
-  const distanceKm = areaCheck.distanceKm;
-
-  const itemTotal = items.reduce((sum, it) => sum + it.price * it.qty, 0);
-  if (itemTotal < MIN_ORDER_AMOUNT) {
-    return res.status(400).json({ error: `Minimum order amount is Rs. ${MIN_ORDER_AMOUNT}.` });
-  }
-  const deliveryFee = 30;
-  const grandTotal = itemTotal + deliveryFee;
-  const etaMin = computeEtaMinutes(distanceKm);
-  const otp = String(Math.floor(1000 + Math.random() * 9000));
-  const orderId = 'YM' + nextOrderNumber++;
-  const createdAt = new Date().toISOString();
-
-  db.prepare(`INSERT INTO orders (id, customer_id, otp, name, phone, address, lat, lng, gps_address,
-              item_total, delivery_fee, grand_total, eta_min, status, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?)`)
-    .run(orderId, req.user ? req.user.id : null, otp, name, phone, address, lat, lng, gps_address || null,
-         itemTotal, deliveryFee, grandTotal, etaMin, createdAt);
-
-  const insertItem = db.prepare('INSERT INTO order_items (order_id, product_name, price, qty) VALUES (?, ?, ?, ?)');
-  const insertMany = db.transaction((rows) => { for (const it of rows) insertItem.run(orderId, it.name, it.price, it.qty); });
-  insertMany(items);
-  // Admin Email Notification
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: 'shiwambarnwal185@gmail.com',
-    subject: `🛒 Yuwa Mart - Naya Order Aaya Hai (${name || 'Grahak'})`,
-    html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-        <h2 style="color: #2e7d32;">🛒 Yuwa Mart Par Naya Order Aaya Hai!</h2>
-        <hr />
-        <p><strong>Grahak ka Naam:</strong> ${name}</p>
-        <p><strong>Phone Number:</strong> ${phone}</p>
-        <p><strong>Pata:</strong> ${address}</p>
-        <hr />
-        <h3>Order Details:</h3>
-        <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">${JSON.stringify(req.body, null, 2)}</pre>
-      </div>
-    `
-  };
-
-  transporter.sendMail(mailOptions, (err, info) => {
-    if (err) console.log('Email Error:', err);
-    else console.log('Email Sent Successfully:', info.response);
-  });
-
-  sendSms(phone, `Yuwa Mart: Your order #${orderId} is confirmed! Total Rs.${grandTotal} (COD). OTP: ${otp}. Arriving in ~${etaMin} min.`)
-    .catch(() => {});
-
-  res.json({ id: orderId, otp, itemTotal, deliveryFee, grandTotal, etaMin, status: 'Confirmed' });
 });
 
-router.get('/mine', requireAuth, (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC').all(req.user.id);
-  const withItems = orders.map(o => ({
-    ...o,
-    items: db.prepare('SELECT product_name AS name, price, qty FROM order_items WHERE order_id = ?').all(o.id),
-  }));
-  res.json(withItems);
+router.get('/mine', requireAuth, async (req, res) => {
+  try {
+    const ordersRes = await pool.query('SELECT * FROM orders WHERE customer_id = $1 ORDER BY created_at DESC', [req.user.id]);
+    const withItems = await Promise.all(ordersRes.rows.map(async (o) => {
+      const itemsRes = await pool.query('SELECT product_name AS name, price, qty FROM order_items WHERE order_id = $1', [o.id]);
+      return { ...o, items: itemsRes.rows };
+    }));
+    res.json(withItems);
+  } catch (err) {
+    console.error('my orders error:', err.message);
+    res.status(500).json({ error: 'Could not load your orders.' });
+  }
 });
 
-router.get('/', requireAdmin, (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
-  const withItems = orders.map(o => ({
-    ...o,
-    items: db.prepare('SELECT product_name AS name, price, qty FROM order_items WHERE order_id = ?').all(o.id),
-  }));
-  res.json(withItems);
+router.get('/', requireAdmin, async (req, res) => {
+  try {
+    const ordersRes = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+    const withItems = await Promise.all(ordersRes.rows.map(async (o) => {
+      const itemsRes = await pool.query('SELECT product_name AS name, price, qty FROM order_items WHERE order_id = $1', [o.id]);
+      return { ...o, items: itemsRes.rows };
+    }));
+    res.json(withItems);
+  } catch (err) {
+    console.error('admin orders error:', err.message);
+    res.status(500).json({ error: 'Could not load orders.' });
+  }
 });
 
-router.put('/:id/status', requireAdmin, (req, res) => {
-  const { status } = req.body;
-  const valid = ['Confirmed', 'Packed', 'Out for Delivery', 'Delivered'];
-  if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
-  const existing = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Order not found.' });
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, req.params.id);
-  res.json({ success: true });
+router.put('/:id/status', requireAdmin, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const valid = ['Confirmed', 'Packed', 'Out for Delivery', 'Delivered'];
+    if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+    const existingRes = await pool.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    if (!existingRes.rows[0]) return res.status(404).json({ error: 'Order not found.' });
+    await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('update status error:', err.message);
+    res.status(500).json({ error: 'Could not update status.' });
+  }
 });
 
 router.get('/config', (req, res) => {
