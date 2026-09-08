@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const userRoutes = require('./routes/users');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +24,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Serve the frontend (public/index.html) for everything else
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -36,7 +38,7 @@ initDb()
       console.log(`Yuwa Mart server running at http://localhost:${PORT}`);
       console.log(`Service area: Birgunj + Pakaha Mainpur Municipality (Parsa District)`);
       console.log(`Admin password: ${process.env.ADMIN_PASSWORD || 'yur@2020'} (change this in .env)`);
-      console.log(`Email notifications: ${process.env.GMAIL_USER ? 'ENABLED (' + process.env.GMAIL_USER + ')' : 'not configured (see .env.example)'}`);
+      console.log(`Email notifications: ${(process.env.RESEND_API_KEY && process.env.OWNER_EMAIL) ? 'ENABLED (' + process.env.OWNER_EMAIL + ')' : 'not configured (see .env.example)'}`);
     });
   })
   .catch((err) => {

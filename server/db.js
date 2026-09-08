@@ -71,7 +71,21 @@ async function initDb() {
       price NUMERIC NOT NULL,
       qty INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
+
+  // Seed empty contact-info settings the first time (owner fills these in later)
+  const contactKeys = ['contact_phone', 'contact_email', 'facebook_url', 'instagram_url', 'tiktok_url'];
+  for (const key of contactKeys) {
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ($1, '') ON CONFLICT (key) DO NOTHING`,
+      [key]
+    );
+  }
 
   // Seed default products only if the table is empty (first-ever run)
   const { rows } = await pool.query('SELECT COUNT(*) AS c FROM products');
