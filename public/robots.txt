@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://yuwamart-com.onrender.com/sitemap.xml
