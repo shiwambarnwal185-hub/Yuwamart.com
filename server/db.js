@@ -45,6 +45,9 @@ async function initDb() {
       old_price NUMERIC,
       image_url TEXT
     );
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data BYTEA;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime TEXT;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS image_version INTEGER NOT NULL DEFAULT 1;
 
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
