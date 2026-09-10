@@ -15,7 +15,7 @@ const SERVICE_ZONES = [
   {
     name: 'Pakaha Mainpur Municipality',
     center: { lat: 27.0200, lng: 84.7300 },
-    radiusKm: parseFloat(process.env.PAKAHA_MAINPUR_RADIUS_KM || '6'),
+    radiusKm: parseFloat(process.env.PAKAHA_MAINPUR_RADIUS_KM || '10'),
   },
 ];
 const MIN_ORDER_AMOUNT = parseFloat(process.env.MIN_ORDER_AMOUNT || '100');
@@ -32,6 +32,18 @@ function computeEtaMinutes(distanceKm) {
   const mins = 15 + distanceKm * 2.5;
   return Math.max(15, Math.min(60, Math.round(mins)));
 }
+// Delivery charge tiers by distance from the nearest zone center:
+//   0–3 km  → Rs. 30
+//   3–6 km  → Rs. 60
+//   6–10 km → Rs. 90
+// Free delivery only kicks in above the free-delivery order threshold.
+const FREE_DELIVERY_THRESHOLD = parseFloat(process.env.FREE_DELIVERY_THRESHOLD || '3000');
+function computeDeliveryFee(distanceKm, itemTotal) {
+  if (itemTotal >= FREE_DELIVERY_THRESHOLD) return 0;
+  if (distanceKm <= 3) return 30;
+  if (distanceKm <= 6) return 60;
+  return 90;
+}
 function checkServiceArea(lat, lng) {
   let nearestDistance = Infinity;
   let inside = false;
@@ -41,6 +53,28 @@ function checkServiceArea(lat, lng) {
     if (d <= zone.radiusKm) inside = true;
   }
   return { inside, distanceKm: nearestDistance };
+}
+
+// Birgunj sits right on the Nepal-India border, so our delivery radius can
+// geometrically extend a short distance into India (e.g. Raxaul). This
+// double-checks the actual country via reverse geocoding so Indian
+// addresses are rejected even if they fall inside the radius circle.
+// If the geocoding service is briefly unavailable, we fail OPEN (allow the
+// order) rather than blocking a legitimate Nepal customer over a network hiccup.
+async function isInNepal(lat, lng) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`, {
+      headers: { 'User-Agent': 'YuwaMart-OrderVerification/1.0' },
+    });
+    const data = await res.json();
+    if (data && data.address && data.address.country_code) {
+      return data.address.country_code.toLowerCase() === 'np';
+    }
+    return true; // couldn't determine country — fail open
+  } catch (err) {
+    console.error('country check failed, allowing order:', err.message);
+    return true; // fail open on network/service errors
+  }
 }
 
 async function nextOrderNumber() {
@@ -61,13 +95,17 @@ router.post('/', optionalAuth, async (req, res) => {
     if (!areaCheck.inside) {
       return res.status(403).json({ error: 'Sorry, we currently deliver only within Birgunj and Pakaha Mainpur Municipality (Parsa District). Your location is outside our delivery area.' });
     }
+    const inNepal = await isInNepal(lat, lng);
+    if (!inNepal) {
+      return res.status(403).json({ error: 'Sorry, this location appears to be outside Nepal. We only deliver within Nepal (Birgunj and Pakaha Mainpur Municipality, Parsa District).' });
+    }
     const distanceKm = areaCheck.distanceKm;
 
     const itemTotal = items.reduce((sum, it) => sum + it.price * it.qty, 0);
     if (itemTotal < MIN_ORDER_AMOUNT) {
       return res.status(400).json({ error: `Minimum order amount is Rs. ${MIN_ORDER_AMOUNT}.` });
     }
-    const deliveryFee = 30;
+    const deliveryFee = computeDeliveryFee(distanceKm, itemTotal);
     const grandTotal = itemTotal + deliveryFee;
     const etaMin = computeEtaMinutes(distanceKm);
     const otp = String(Math.floor(1000 + Math.random() * 9000));
@@ -145,7 +183,7 @@ router.put('/:id/status', requireAdmin, async (req, res) => {
 });
 
 router.get('/config', (req, res) => {
-  res.json({ zones: SERVICE_ZONES, minOrder: MIN_ORDER_AMOUNT });
+  res.json({ zones: SERVICE_ZONES, minOrder: MIN_ORDER_AMOUNT, freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD });
 });
 
 module.exports = router;
