@@ -612,8 +612,8 @@
 /* ================= STATE ================= */
 let SERVICE_CONFIG = { zones: [
   { name:'Birgunj', center:{ lat: 27.0104, lng: 84.8807 }, radiusKm: 14 },
-  { name:'Pakaha Mainpur Municipality', center:{ lat: 27.0200, lng: 84.7300 }, radiusKm: 6 },
-], minOrder: 100 };
+  { name:'Pakaha Mainpur Municipality', center:{ lat: 27.0200, lng: 84.7300 }, radiusKm: 10 },
+], minOrder: 100, freeDeliveryThreshold: 3000 };
 let token = localStorage.getItem('ym_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('ym_user') || 'null');
 let adminToken = null;
@@ -661,6 +661,15 @@ function checkServiceArea(lat, lng){
   }
   return { inside, distanceKm: nearestDistance, zone };
 }
+// Matches the server's tiered delivery pricing so the cart shows the
+// correct fee before checkout: Rs.30 (0-3km), Rs.60 (3-6km), Rs.90 (6-10km),
+// free above the free-delivery order threshold.
+function computeDeliveryFee(distanceKm, itemTotal){
+  if(itemTotal >= SERVICE_CONFIG.freeDeliveryThreshold) return 0;
+  if(distanceKm <= 3) return 30;
+  if(distanceKm <= 6) return 60;
+  return 90;
+}
 function catColor(catId){ const c = categories.find(x=>x.id===catId); return c ? c.color : '#8C2F2F'; }
 function phImg(name, color){
   const letter = (name || '?').trim().charAt(0).toUpperCase();
@@ -679,6 +688,21 @@ async function reverseGeocode(lat, lng){
   }catch(e){}
   return `Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
 }
+// Birgunj sits right on the Nepal-India border, so the delivery radius can
+// geometrically dip into India (e.g. Raxaul). This confirms the actual
+// country so Indian addresses are blocked even if inside the radius.
+// Fails OPEN (allows) if the check itself can't be completed, so a brief
+// network hiccup never wrongly blocks a real Nepal customer.
+async function checkCountryIsNepal(lat, lng){
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`);
+    const data = await res.json();
+    if(data && data.address && data.address.country_code){
+      return data.address.country_code.toLowerCase() === 'np';
+    }
+    return true;
+  }catch(e){ return true; }
+}
 function authHeaders(){ return token ? { 'Authorization': 'Bearer ' + token } : {}; }
 function adminHeaders(){ return adminToken ? { 'Authorization': 'Bearer ' + adminToken } : {}; }
 
@@ -692,24 +716,47 @@ async function loadConfig(){
   try{
     const res = await fetch('/api/orders/config');
     const data = await res.json();
-    SERVICE_CONFIG = { zones: data.zones, minOrder: data.minOrder };
+    SERVICE_CONFIG = { zones: data.zones, minOrder: data.minOrder, freeDeliveryThreshold: data.freeDeliveryThreshold };
   }catch(e){ /* keep defaults */ }
+}
+
+// Tries a FAST, network/WiFi-based location first (usually resolves in
+// 1-3 seconds, even indoors) — plenty precise enough for our large delivery
+// zones (6-14 km radius). Only falls back to slower high-accuracy GPS if
+// the fast attempt fails, so most customers never have to wait long.
+function getQuickLocation(){
+  return new Promise((resolve, reject) => {
+    if(!navigator.geolocation){ reject(new Error('Geolocation not supported')); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos),
+      () => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos),
+          (err) => reject(err),
+          { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+        );
+      },
+      { enableHighAccuracy:false, timeout:6000, maximumAge:60000 }
+    );
+  });
 }
 
 function startLocationCheck(){
   showScreen('screen-loading');
   if(!navigator.geolocation){ showScreen('screen-permission'); return; }
-  navigator.geolocation.getCurrentPosition(async (pos)=>{
+  getQuickLocation().then(async (pos)=>{
     const lat = pos.coords.latitude, lng = pos.coords.longitude;
     const areaCheck = checkServiceArea(lat, lng);
     if(areaCheck.inside){
+      const inNepal = await checkCountryIsNepal(lat, lng);
+      if(!inNepal){ showScreen('screen-blocked'); return; }
       const address = await reverseGeocode(lat, lng);
       userLocation = { lat, lng, address, distanceKm: areaCheck.distanceKm };
       afterLocationOk();
     } else {
       showScreen('screen-blocked');
     }
-  }, ()=>{ showScreen('screen-permission'); }, { enableHighAccuracy:true, timeout:12000 });
+  }).catch(()=>{ showScreen('screen-permission'); });
 }
 
 async function afterLocationOk(){
@@ -930,7 +977,8 @@ function renderCartSheet(){
   }).join('');
 
   const {total} = cartTotals();
-  const deliveryFee = 30;
+  const distanceKm = userLocation ? userLocation.distanceKm : 0;
+  const deliveryFee = computeDeliveryFee(distanceKm, total);
   const grandTotal = total + deliveryFee;
   billEl.innerHTML = `
     <div class="bill-row"><span>Item Total</span><span>${money(total)}</span></div>
@@ -960,16 +1008,14 @@ function showCheckout(){
     if(/^\d+$/.test(currentUser.contact)) document.getElementById('custPhone').value = currentUser.contact;
   }
   document.getElementById('liveLocText').textContent = 'Fetching current GPS location…';
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(async (pos)=>{
-      const lat = pos.coords.latitude, lng = pos.coords.longitude;
-      const address = await reverseGeocode(lat, lng);
-      userLocation = { ...userLocation, lat, lng, address, distanceKm: checkServiceArea(lat,lng).distanceKm };
-      document.getElementById('liveLocText').textContent = address;
-    }, ()=>{
-      document.getElementById('liveLocText').textContent = userLocation ? userLocation.address : 'Location unavailable — please describe your address above.';
-    });
-  }
+  getQuickLocation().then(async (pos)=>{
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    const address = await reverseGeocode(lat, lng);
+    userLocation = { ...userLocation, lat, lng, address, distanceKm: checkServiceArea(lat,lng).distanceKm };
+    document.getElementById('liveLocText').textContent = address;
+  }).catch(()=>{
+    document.getElementById('liveLocText').textContent = userLocation ? userLocation.address : 'Location unavailable — please describe your address above.';
+  });
 }
 
 /* ================= PLACE ORDER ================= */
