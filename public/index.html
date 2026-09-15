@@ -791,6 +791,12 @@ async function doSignup(){
     alert('Please enter your name, a valid email/phone, and a password of at least 4 characters.');
     return;
   }
+  const isValidPhone = /^9\d{9}$/.test(contact);
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
+  if(!isValidPhone && !isValidEmail){
+    alert('Please enter a valid 10-digit Nepali mobile number (starting with 9) or a valid email address.');
+    return;
+  }
   const res = await fetch('/api/auth/signup', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ name, contact, password })
@@ -1024,6 +1030,10 @@ async function placeOrder(){
   const phone = document.getElementById('custPhone').value.trim();
   const addr = document.getElementById('custAddress').value.trim();
   if(!name || !phone || !addr){ alert('Please fill in your name, phone number, and address.'); return; }
+  if(!/^9\d{9}$/.test(phone)){
+    alert('Please enter a valid 10-digit Nepali mobile number (starting with 9).');
+    return;
+  }
   if(!userLocation || typeof userLocation.lat !== 'number'){
     alert('We could not detect your live location. Please allow location access and try again.');
     return;
