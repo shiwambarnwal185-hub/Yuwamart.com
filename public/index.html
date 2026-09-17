@@ -424,7 +424,6 @@
         <div class="brand">Yuwa <span>Mart</span></div>
         <div class="head-icons">
           <button class="icon-pill" onclick="openContactUs()" title="Contact Us">📞</button>
-          <button class="icon-pill" onclick="openMyOrders()">🧾</button>
           <button class="icon-pill" onclick="openOwnerLogin()" title="Owner Login">🔐</button>
         </div>
       </div>
@@ -465,7 +464,7 @@
     <div class="section-title">Shop by Category</div>
     <div class="cat-scroll" id="catScroll"></div>
 
-    <div class="section-title">Recommended Fast Food <small>Order Now</small></div>
+    <div class="section-title" id="ffSectionTitle">Recommended Fast Food <small>Order Now</small></div>
     <div class="ff-scroll" id="ffScroll"></div>
 
     <div class="section-title" id="gridTitle">All Groceries</div>
@@ -501,7 +500,7 @@
   <div class="overlay" id="checkoutOverlay">
     <div class="sheet">
       <div class="sheet-head">
-        <h3>Delivery Details</h3>
+        <h3 id="checkoutTitle">Delivery Details</h3>
         <button class="close-x" onclick="closeOverlay('checkoutOverlay')">✕</button>
       </div>
       <div class="field">
@@ -513,8 +512,21 @@
         <input id="custPhone" placeholder="98XXXXXXXX">
       </div>
       <div class="field">
-        <label>Delivery Address / Landmark (Birgunj)</label>
+        <label id="custAddressLabel">Delivery Address / Landmark (Birgunj)</label>
         <textarea id="custAddress" rows="2" placeholder="Ward no., Tole, nearby landmark"></textarea>
+      </div>
+      <div id="courierFieldsWrap" style="display:none;">
+        <div class="field">
+          <label>City</label>
+          <input id="shipCity" placeholder="e.g. Kathmandu, Delhi, London">
+        </div>
+        <div class="field">
+          <label>Country</label>
+          <input id="shipCountry" placeholder="e.g. Nepal, India, USA">
+        </div>
+        <div class="cod-box">
+          📦 <div>This item ships by courier. Shipping within Nepal costs less than shipping to other countries — the exact charge is shown in your bill below.</div>
+        </div>
       </div>
       <div class="loc-box" id="checkoutLocBox">
         📍 <div><strong>Live location:</strong> <span id="liveLocText">Fetching current GPS location…</span><br>This location is automatically shared with Yuwa Mart so we can find you accurately.</div>
@@ -613,13 +625,14 @@
 let SERVICE_CONFIG = { zones: [
   { name:'Birgunj', center:{ lat: 27.0104, lng: 84.8807 }, radiusKm: 14 },
   { name:'Pakaha Mainpur Municipality', center:{ lat: 27.0200, lng: 84.7300 }, radiusKm: 10 },
-], minOrder: 100, freeDeliveryThreshold: 3000 };
+], minOrder: 100, freeDeliveryThreshold: 3000, courierFeeNepal: 150, courierFeeInternational: 1000 };
 let token = localStorage.getItem('ym_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('ym_user') || 'null');
 let adminToken = null;
 
 let products = [];   // type === 'grocery'
 let fastfood = [];   // type === 'fastfood'
+let courierProducts = []; // type === 'courier' (gifts/electronics/shoes — ships worldwide)
 let cart = {};        // { productId: qty }
 let activeCat = 'all';
 let userLocation = null; // { lat, lng, address, distanceKm }
@@ -638,6 +651,12 @@ const categories = [
   {id:'meat',     label:'Meat & Fish',           ico:'🍗', color:'#8C2F2F'},
   {id:'personal', label:'Personal Care',         ico:'🧴', color:'#5A6EAA'},
   {id:'home',     label:'Household',             ico:'🧹', color:'#5C6B5E'},
+];
+// Courier categories ship worldwide (not limited to the local delivery zone)
+const COURIER_CATEGORIES = [
+  {id:'gifts',       label:'Gifts',       ico:'🎁', color:'#B3401F'},
+  {id:'electronics', label:'Electronics', ico:'📱', color:'#4472A8'},
+  {id:'shoes',       label:'Shoes',       ico:'👟', color:'#5C6B5E'},
 ];
 
 /* ================= UTILITY ================= */
@@ -670,7 +689,10 @@ function computeDeliveryFee(distanceKm, itemTotal){
   if(distanceKm <= 6) return 60;
   return 90;
 }
-function catColor(catId){ const c = categories.find(x=>x.id===catId); return c ? c.color : '#8C2F2F'; }
+function catColor(catId){
+  const c = categories.find(x=>x.id===catId) || COURIER_CATEGORIES.find(x=>x.id===catId);
+  return c ? c.color : '#8C2F2F';
+}
 function phImg(name, color){
   const letter = (name || '?').trim().charAt(0).toUpperCase();
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><rect width='300' height='300' fill='${color}'/><text x='50%' y='56%' font-family='Arial, sans-serif' font-size='120' fill='rgba(255,255,255,0.88)' text-anchor='middle' dominant-baseline='middle'>${letter}</text></svg>`;
@@ -716,7 +738,7 @@ async function loadConfig(){
   try{
     const res = await fetch('/api/orders/config');
     const data = await res.json();
-    SERVICE_CONFIG = { zones: data.zones, minOrder: data.minOrder, freeDeliveryThreshold: data.freeDeliveryThreshold };
+    SERVICE_CONFIG = { zones: data.zones, minOrder: data.minOrder, freeDeliveryThreshold: data.freeDeliveryThreshold, courierFeeNepal: data.courierFeeNepal, courierFeeInternational: data.courierFeeInternational };
   }catch(e){ /* keep defaults */ }
 }
 
@@ -741,38 +763,34 @@ function getQuickLocation(){
   });
 }
 
+let withinDeliveryZone = false; // true = local grocery+courier catalog; false = worldwide courier-only catalog
+
 function startLocationCheck(){
   showScreen('screen-loading');
-  if(!navigator.geolocation){ showScreen('screen-permission'); return; }
+  if(!navigator.geolocation){
+    withinDeliveryZone = false;
+    enterMainApp();
+    return;
+  }
   getQuickLocation().then(async (pos)=>{
     const lat = pos.coords.latitude, lng = pos.coords.longitude;
     const areaCheck = checkServiceArea(lat, lng);
     if(areaCheck.inside){
       const inNepal = await checkCountryIsNepal(lat, lng);
-      if(!inNepal){ showScreen('screen-blocked'); return; }
-      const address = await reverseGeocode(lat, lng);
-      userLocation = { lat, lng, address, distanceKm: areaCheck.distanceKm };
-      afterLocationOk();
-    } else {
-      showScreen('screen-blocked');
-    }
-  }).catch(()=>{ showScreen('screen-permission'); });
-}
-
-async function afterLocationOk(){
-  if(token){
-    try{
-      const res = await fetch('/api/auth/me', { headers: authHeaders() });
-      if(res.ok){
-        const data = await res.json();
-        currentUser = data.user;
-        localStorage.setItem('ym_user', JSON.stringify(currentUser));
-        await enterMainApp();
+      if(inNepal){
+        const address = await reverseGeocode(lat, lng);
+        userLocation = { lat, lng, address, distanceKm: areaCheck.distanceKm };
+        withinDeliveryZone = true;
+        enterMainApp();
         return;
       }
-    }catch(e){}
-  }
-  showScreen('screen-auth');
+    }
+    withinDeliveryZone = false;
+    enterMainApp();
+  }).catch(()=>{
+    withinDeliveryZone = false;
+    enterMainApp();
+  });
 }
 
 /* ================= AUTH ================= */
@@ -826,9 +844,13 @@ async function doLogin(){
 
 async function enterMainApp(){
   showScreen('screen-main');
-  document.getElementById('headerAddr').textContent = userLocation ? userLocation.address : 'Birgunj, Parsa';
-  const eta = userLocation ? computeEtaMinutes(userLocation.distanceKm) : 25;
-  document.getElementById('headerEta').textContent = '~' + eta + ' min';
+  if(withinDeliveryZone && userLocation){
+    document.getElementById('headerAddr').textContent = userLocation.address;
+    document.getElementById('headerEta').textContent = '~' + computeEtaMinutes(userLocation.distanceKm) + ' min';
+  } else {
+    document.getElementById('headerAddr').textContent = 'Worldwide shipping';
+    document.getElementById('headerEta').textContent = 'Courier';
+  }
   await loadProducts();
   renderCats();
   renderFastFoodStrip();
@@ -843,19 +865,21 @@ async function loadProducts(){
     const all = await res.json();
     products = all.filter(p => p.type === 'grocery');
     fastfood = all.filter(p => p.type === 'fastfood');
+    courierProducts = all.filter(p => p.type === 'courier');
   }catch(e){
     console.error('Failed to load products', e);
   }
 }
 function findProduct(id){
-  return products.find(p=>p.id==id) || fastfood.find(p=>p.id==id);
+  return products.find(p=>p.id==id) || fastfood.find(p=>p.id==id) || courierProducts.find(p=>p.id==id);
 }
 
 /* ================= RENDER: CATEGORIES ================= */
 function renderCats(){
+  const visibleCats = withinDeliveryZone ? [...categories, ...COURIER_CATEGORIES] : COURIER_CATEGORIES;
   let html = `<div class="cat-chip ${activeCat==='all'?'active':''}" onclick="setCat('all')">
       <div class="ico">🛒</div><div class="lbl">All Items</div></div>`;
-  categories.forEach(c=>{
+  visibleCats.forEach(c=>{
     html += `<div class="cat-chip ${activeCat===c.id?'active':''}" onclick="setCat('${c.id}')">
       <div class="ico">${c.ico}</div><div class="lbl">${c.label}</div></div>`;
   });
@@ -863,14 +887,25 @@ function renderCats(){
 }
 function setCat(id){
   activeCat = id;
-  document.getElementById('gridTitle').firstChild.textContent = id==='all' ? 'All Groceries' : categories.find(c=>c.id===id).label;
+  const allCats = [...categories, ...COURIER_CATEGORIES];
+  document.getElementById('gridTitle').firstChild.textContent = id==='all' ? (withinDeliveryZone ? 'All Groceries' : 'All Items') : (allCats.find(c=>c.id===id)?.label || 'Items');
   renderCats();
   renderProducts();
 }
 
 /* ================= RENDER: FAST FOOD STRIP ================= */
 function renderFastFoodStrip(){
+  const titleEl = document.getElementById('ffSectionTitle');
   const el = document.getElementById('ffScroll');
+  if(!withinDeliveryZone){
+    // Fast food is a local-only category — hidden entirely for worldwide/courier-only visitors
+    titleEl.style.display = 'none';
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  titleEl.style.display = '';
+  el.style.display = '';
   el.innerHTML = fastfood.map(p=>{
     const qty = cart[p.id] || 0;
     return `
@@ -893,7 +928,8 @@ function renderFastFoodStrip(){
 /* ================= RENDER: PRODUCT GRID ================= */
 function renderProducts(){
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  let list = products.filter(p => activeCat==='all' || p.category===activeCat);
+  const sourceList = withinDeliveryZone ? [...products, ...courierProducts] : courierProducts;
+  let list = sourceList.filter(p => activeCat==='all' || p.category===activeCat);
   if(q) list = list.filter(p=>p.name.toLowerCase().includes(q));
   const grid = document.getElementById('productGrid');
   if(list.length===0){
@@ -905,7 +941,7 @@ function renderProducts(){
     const disc = p.old_price ? Math.round((1 - p.price/p.old_price)*100) : null;
     return `
     <div class="card">
-      ${disc ? `<div class="discount">${disc}% OFF</div>` : `<div class="organic-tag">Fresh</div>`}
+      ${disc ? `<div class="discount">${disc}% OFF</div>` : (p.type==='courier' ? '' : `<div class="organic-tag">Fresh</div>`)}
       <div class="imgwrap"><img class="ph" src="${productImgSrc(p)}" alt="${p.name}"></div>
       <div class="info">
         <div class="weight">${p.weight}</div>
@@ -916,7 +952,7 @@ function renderProducts(){
             ${p.old_price ? `<span class="price-old">${money(p.old_price)}</span>` : ''}
           </div>
           ${qty===0
-            ? `<button class="add-btn" onclick="addItem(${p.id})">ADD</button>`
+            ? `<button class="add-btn" onclick="addItem(${p.id})">Buy</button>`
             : `<div class="qty-ctrl"><button onclick="removeItem(${p.id})">−</button><span class="qn">${qty}</span><button onclick="addItem(${p.id})">+</button></div>`
           }
         </div>
@@ -983,14 +1019,18 @@ function renderCartSheet(){
   }).join('');
 
   const {total} = cartTotals();
-  const distanceKm = userLocation ? userLocation.distanceKm : 0;
-  const deliveryFee = computeDeliveryFee(distanceKm, total);
-  const grandTotal = total + deliveryFee;
-  billEl.innerHTML = `
-    <div class="bill-row"><span>Item Total</span><span>${money(total)}</span></div>
-    <div class="bill-row"><span>Delivery Fee</span><span>${deliveryFee===0?'FREE':money(deliveryFee)}</span></div>
-    <div class="bill-row total"><span>Total Payable (COD)</span><span>${money(grandTotal)}</span></div>
-  `;
+  let billRows = `<div class="bill-row"><span>Item Total</span><span>${money(total)}</span></div>`;
+  if(withinDeliveryZone){
+    const distanceKm = userLocation ? userLocation.distanceKm : 0;
+    const deliveryFee = computeDeliveryFee(distanceKm, total);
+    const grandTotal = total + deliveryFee;
+    billRows += `<div class="bill-row"><span>Delivery Fee</span><span>${deliveryFee===0?'FREE':money(deliveryFee)}</span></div>`;
+    billRows += `<div class="bill-row total"><span>Total Payable (COD)</span><span>${money(grandTotal)}</span></div>`;
+  } else {
+    billRows += `<div class="bill-row"><span>Courier Shipping</span><span>Shown at checkout</span></div>`;
+    billRows += `<div class="bill-row total"><span>Items Total (+ shipping)</span><span>${money(total)}</span></div>`;
+  }
+  billEl.innerHTML = billRows;
   if(total < SERVICE_CONFIG.minOrder){
     warnEl.innerHTML = `<div class="min-order-warn">⚠️ Minimum order amount is Rs. ${SERVICE_CONFIG.minOrder}. Please add Rs. ${SERVICE_CONFIG.minOrder-total} more worth of items to proceed.</div>`;
     document.getElementById('codNotice').style.display='none';
@@ -1009,19 +1049,26 @@ function closeOverlay(id){ document.getElementById(id).classList.remove('show');
 function showCheckout(){
   closeOverlay('cartOverlay');
   document.getElementById('checkoutOverlay').classList.add('show');
-  if(currentUser){
-    document.getElementById('custName').value = currentUser.name;
-    if(/^\d+$/.test(currentUser.contact)) document.getElementById('custPhone').value = currentUser.contact;
+  if(withinDeliveryZone){
+    document.getElementById('checkoutTitle').textContent = 'Delivery Details';
+    document.getElementById('custAddressLabel').textContent = 'Delivery Address / Landmark (Birgunj)';
+    document.getElementById('courierFieldsWrap').style.display = 'none';
+    document.getElementById('checkoutLocBox').style.display = 'flex';
+    document.getElementById('liveLocText').textContent = 'Fetching current GPS location…';
+    getQuickLocation().then(async (pos)=>{
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      const address = await reverseGeocode(lat, lng);
+      userLocation = { ...userLocation, lat, lng, address, distanceKm: checkServiceArea(lat,lng).distanceKm };
+      document.getElementById('liveLocText').textContent = address;
+    }).catch(()=>{
+      document.getElementById('liveLocText').textContent = userLocation ? userLocation.address : 'Location unavailable — please describe your address above.';
+    });
+  } else {
+    document.getElementById('checkoutTitle').textContent = 'Shipping Details';
+    document.getElementById('custAddressLabel').textContent = 'Full Shipping Address';
+    document.getElementById('courierFieldsWrap').style.display = 'block';
+    document.getElementById('checkoutLocBox').style.display = 'none';
   }
-  document.getElementById('liveLocText').textContent = 'Fetching current GPS location…';
-  getQuickLocation().then(async (pos)=>{
-    const lat = pos.coords.latitude, lng = pos.coords.longitude;
-    const address = await reverseGeocode(lat, lng);
-    userLocation = { ...userLocation, lat, lng, address, distanceKm: checkServiceArea(lat,lng).distanceKm };
-    document.getElementById('liveLocText').textContent = address;
-  }).catch(()=>{
-    document.getElementById('liveLocText').textContent = userLocation ? userLocation.address : 'Location unavailable — please describe your address above.';
-  });
 }
 
 /* ================= PLACE ORDER ================= */
@@ -1034,41 +1081,52 @@ async function placeOrder(){
     alert('Please enter a valid 10-digit Nepali mobile number (starting with 9).');
     return;
   }
-  if(!userLocation || typeof userLocation.lat !== 'number'){
-    alert('We could not detect your live location. Please allow location access and try again.');
-    return;
-  }
   const items = Object.entries(cart).map(([id,qty])=>{
     const item = findProduct(id);
     return { name:item.name, price:item.price, qty };
   });
 
+  let body;
+  if(withinDeliveryZone){
+    if(!userLocation || typeof userLocation.lat !== 'number'){
+      alert('We could not detect your live location. Please allow location access and try again.');
+      return;
+    }
+    body = { name, phone, address: addr, lat: userLocation.lat, lng: userLocation.lng, gps_address: userLocation.address, items };
+  } else {
+    const shipCity = document.getElementById('shipCity').value.trim();
+    const shipCountry = document.getElementById('shipCountry').value.trim();
+    if(!shipCity || !shipCountry){ alert('Please fill in your city and country for shipping.'); return; }
+    body = { name, phone, address: addr, shipping_city: shipCity, shipping_country: shipCountry, items };
+  }
+
   const res = await fetch('/api/orders', {
     method:'POST',
     headers: { 'Content-Type':'application/json', ...authHeaders() },
-    body: JSON.stringify({
-      name, phone, address: addr,
-      lat: userLocation.lat, lng: userLocation.lng, gps_address: userLocation.address,
-      items
-    })
+    body: JSON.stringify(body)
   });
   const data = await res.json();
   if(!res.ok){ alert(data.error || 'Could not place order.'); return; }
 
   document.getElementById('orderIdText').textContent = `Order #${data.id} · ${money(data.grandTotal)} · Cash on Delivery`;
   document.getElementById('otpDigits').textContent = data.otp;
-  document.getElementById('statusEta').textContent = `Arriving in ~${data.etaMin} min`;
+  document.getElementById('statusEta').textContent = data.orderType==='courier' ? 'Ships via courier in a few days' : `Arriving in ~${data.etaMin} min`;
 
   closeOverlay('checkoutOverlay');
   document.getElementById('statusOverlay').classList.add('show');
-  renderTrackSteps(data.etaMin);
+  renderTrackSteps(data.orderType, data.etaMin);
 
   cart = {};
   refreshAll();
 }
 
-function renderTrackSteps(etaMin){
-  const steps = [
+function renderTrackSteps(orderType, etaMin){
+  const steps = orderType==='courier' ? [
+    {label:'Order confirmed', time:'Just now', state:'done'},
+    {label:'Packing your order', time:'Within 1 day', state:'active'},
+    {label:'Handed to courier', time:'Within 2-3 days', state:''},
+    {label:'Delivered to your address', time:'As per courier timeline', state:''},
+  ] : [
     {label:'Order confirmed', time:'Just now', state:'done'},
     {label:'Packing your order', time:'In 2-3 min', state:'active'},
     {label:'Out for delivery', time:`In ~${Math.max(5, etaMin-10)} min`, state:''},
@@ -1142,6 +1200,7 @@ function switchOwnerTab(tab){
 function categoryOptionsHtml(selectedCat){
   let opts = categories.map(c=>`<option value="${c.id}" ${c.id===selectedCat?'selected':''}>${c.label}</option>`).join('');
   opts += `<option value="fastfood" ${selectedCat==='fastfood'?'selected':''}>Fast Food</option>`;
+  opts += COURIER_CATEGORIES.map(c=>`<option value="${c.id}" ${c.id===selectedCat?'selected':''}>${c.label} (ships worldwide)</option>`).join('');
   return opts;
 }
 
@@ -1254,19 +1313,20 @@ async function renderOwnerOrders(){
   }
   content.innerHTML = allOrders.map((o) => `
     <div class="order-card">
-      <div class="ohead"><span>#${o.id}</span><span class="otime">${new Date(o.created_at).toLocaleString()}</span></div>
+      <div class="ohead"><span>#${o.id} ${o.order_type==='courier' ? '📦' : '🛵'}</span><span class="otime">${new Date(o.created_at).toLocaleString()}</span></div>
       <div class="ocust">
         👤 ${o.name} (${o.customer_id || 'Guest'}) · 📞 ${o.phone}<br>
-        📍 Address entered: ${o.address}<br>
+        📍 Address: ${o.address}${o.order_type==='courier' ? `, ${o.shipping_city}, ${o.shipping_country}` : ''}<br>
         ${o.gps_address ? `🛰️ GPS location: ${o.gps_address}` : ''}
+        ${o.order_type==='courier' ? '<strong>Courier shipment</strong> — no local GPS location (shipped outside the delivery zone)' : ''}
       </div>
       ${(o.lat && o.lng) ? `<a class="map-link" target="_blank" href="https://www.google.com/maps?q=${o.lat},${o.lng}">View exact location on map ↗</a>` : ''}
       <div class="oitems">
         ${o.items.map(it => `${it.name} × ${it.qty} — ${money(it.price * it.qty)}`).join('<br>')}
-        <br><strong style="color:var(--ink);">Total (COD): ${money(o.grand_total)}</strong> · OTP: <strong>${o.otp}</strong> · ETA: ${o.eta_min} min
+        <br><strong style="color:var(--ink);">Total (COD): ${money(o.grand_total)}</strong> · OTP: <strong>${o.otp}</strong>${o.order_type==='courier' ? '' : ` · ETA: ${o.eta_min} min`}
       </div>
       <select onchange="updateOrderStatus('${o.id}', this.value)">
-        ${['Confirmed','Packed','Out for Delivery','Delivered'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}
+        ${(o.order_type==='courier' ? ['Confirmed','Packed','Shipped','Delivered'] : ['Confirmed','Packed','Out for Delivery','Delivered']).map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}
       </select>
     </div>
   `).join('');
