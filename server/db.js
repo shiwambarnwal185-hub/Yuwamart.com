@@ -48,6 +48,7 @@ async function initDb() {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data BYTEA;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime TEXT;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS is_courier BOOLEAN NOT NULL DEFAULT false;
 
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
@@ -66,6 +67,9 @@ async function initDb() {
       status TEXT NOT NULL DEFAULT 'Confirmed',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_type TEXT NOT NULL DEFAULT 'local';
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_city TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_country TEXT;
 
     CREATE TABLE IF NOT EXISTS order_items (
       id SERIAL PRIMARY KEY,
@@ -159,6 +163,26 @@ async function initDb() {
         [name, weight, price, old_price]
       );
     }
+
+    // Courier items — visible everywhere (not just the local delivery zone)
+    const courierItems = [
+      ['gifts','Birthday Gift Box','1 pc',799,999],
+      ['gifts','Flower Bouquet (Artificial)','1 pc',599,null],
+      ['gifts','Greeting Card + Chocolate Combo','1 pc',349,null],
+      ['electronics','Wireless Earbuds','1 pair',1999,2499],
+      ['electronics','Digital Wrist Watch','1 pc',1499,1799],
+      ['electronics','Power Bank 10000mAh','1 pc',1799,null],
+      ['shoes',"Men's Sports Shoes",'1 pair',2299,2799],
+      ['shoes',"Women's Casual Sneakers",'1 pair',2099,null],
+      ['shoes','Kids School Shoes','1 pair',1299,1499],
+    ];
+    for (const [category, name, weight, price, old_price] of courierItems) {
+      await pool.query(
+        `INSERT INTO products (type, category, name, weight, price, old_price, image_url, is_courier) VALUES ('courier', $1, $2, $3, $4, $5, NULL, true)`,
+        [category, name, weight, price, old_price]
+      );
+    }
+
     console.log('✅ Seeded default products into the database.');
   }
 }
