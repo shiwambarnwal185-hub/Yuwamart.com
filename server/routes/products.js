@@ -6,6 +6,12 @@ const { requireAdmin } = require('../middleware');
 
 const router = express.Router();
 
+// Categories that ship worldwide via courier (not tied to the local delivery zone)
+const COURIER_CATEGORIES = ['gifts', 'electronics', 'shoes'];
+function isCourierCategory(category) {
+  return COURIER_CATEGORIES.includes(category);
+}
+
 // Photos are kept in memory only long enough to compress them, then the
 // compressed bytes are stored in the database (image_data column) — never
 // on the server's disk, so they survive every restart/redeploy.
@@ -27,7 +33,7 @@ async function compressImage(file) {
     .toBuffer();
 }
 
-// Public: list all products (groceries + fast food).
+// Public: list all products (groceries + fast food + courier items).
 // IMPORTANT: this deliberately excludes image_data (the actual photo bytes) —
 // the list only carries a small photo *link* (image_url). The browser then
 // fetches each photo separately via /api/products/:id/photo and CACHES it,
@@ -36,7 +42,7 @@ async function compressImage(file) {
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, type, category, name, weight, price, old_price, image_url FROM products ORDER BY id ASC`
+      `SELECT id, type, category, name, weight, price, old_price, image_url, is_courier FROM products ORDER BY id ASC`
     );
     res.json(rows);
   } catch (err) {
@@ -70,8 +76,9 @@ router.post('/', requireAdmin, upload.single('photo'), async (req, res) => {
     if (!name || !weight || !price || isNaN(parseFloat(price))) {
       return res.status(400).json({ error: 'Please provide name, weight, and a valid price.' });
     }
-    const finalType = type === 'fastfood' ? 'fastfood' : 'grocery';
+    const finalType = type === 'fastfood' ? 'fastfood' : (isCourierCategory(category) ? 'courier' : 'grocery');
     const finalCategory = type === 'fastfood' ? 'fastfood' : category;
+    const finalIsCourier = isCourierCategory(finalCategory);
 
     let imageUrl = req.body.image_url || null; // used if the owner pasted an external link instead
     let imageData = null, imageMime = null;
@@ -81,9 +88,9 @@ router.post('/', requireAdmin, upload.single('photo'), async (req, res) => {
     }
 
     const insertRes = await pool.query(
-      `INSERT INTO products (type, category, name, weight, price, old_price, image_url, image_data, image_mime)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [finalType, finalCategory, name, weight, parseFloat(price), old_price ? parseFloat(old_price) : null, imageUrl, imageData, imageMime]
+      `INSERT INTO products (type, category, name, weight, price, old_price, image_url, image_data, image_mime, is_courier)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [finalType, finalCategory, name, weight, parseFloat(price), old_price ? parseFloat(old_price) : null, imageUrl, imageData, imageMime, finalIsCourier]
     );
     const newId = insertRes.rows[0].id;
 
@@ -94,7 +101,7 @@ router.post('/', requireAdmin, upload.single('photo'), async (req, res) => {
     }
 
     const finalRes = await pool.query(
-      'SELECT id, type, category, name, weight, price, old_price, image_url FROM products WHERE id = $1',
+      'SELECT id, type, category, name, weight, price, old_price, image_url, is_courier FROM products WHERE id = $1',
       [newId]
     );
     res.json(finalRes.rows[0]);
@@ -127,21 +134,25 @@ router.put('/:id', requireAdmin, upload.single('photo'), async (req, res) => {
       imageData = null; imageMime = null;
     }
 
+    const finalCategory = category ?? existing.category;
+    const finalIsCourier = isCourierCategory(finalCategory);
+    const finalType = existing.type === 'fastfood' ? 'fastfood' : (finalIsCourier ? 'courier' : 'grocery');
+
     await pool.query(
-      `UPDATE products SET category = $1, name = $2, weight = $3, price = $4, old_price = $5,
-              image_url = $6, image_data = $7, image_mime = $8, image_version = $9 WHERE id = $10`,
+      `UPDATE products SET type = $1, category = $2, name = $3, weight = $4, price = $5, old_price = $6,
+              image_url = $7, image_data = $8, image_mime = $9, image_version = $10, is_courier = $11 WHERE id = $12`,
       [
-        category ?? existing.category,
+        finalType, finalCategory,
         name ?? existing.name,
         weight ?? existing.weight,
         price ? parseFloat(price) : existing.price,
         old_price ? parseFloat(old_price) : null,
-        imageUrl, imageData, imageMime, imageVersion,
+        imageUrl, imageData, imageMime, imageVersion, finalIsCourier,
         id,
       ]
     );
     const finalRes = await pool.query(
-      'SELECT id, type, category, name, weight, price, old_price, image_url FROM products WHERE id = $1',
+      'SELECT id, type, category, name, weight, price, old_price, image_url, is_courier FROM products WHERE id = $1',
       [id]
     );
     res.json(finalRes.rows[0]);

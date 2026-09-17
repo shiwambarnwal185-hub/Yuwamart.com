@@ -19,6 +19,16 @@ const SERVICE_ZONES = [
   },
 ];
 const MIN_ORDER_AMOUNT = parseFloat(process.env.MIN_ORDER_AMOUNT || '100');
+// Courier shipping charge (gifts/electronics/shoes shipped outside the local
+// delivery zone — no distance-based tiers here since a real courier company
+// handles the actual delivery): cheaper within Nepal, more for other countries.
+const COURIER_FEE_NEPAL = parseFloat(process.env.COURIER_FEE_NEPAL || '150');
+const COURIER_FEE_INTERNATIONAL = parseFloat(process.env.COURIER_FEE_INTERNATIONAL || '1000');
+function computeCourierFee(itemTotal, country) {
+  if (itemTotal >= FREE_DELIVERY_THRESHOLD) return 0;
+  const isNepal = (country || '').trim().toLowerCase() === 'nepal';
+  return isNepal ? COURIER_FEE_NEPAL : COURIER_FEE_INTERNATIONAL;
+}
 
 function toRad(v) { return (v * Math.PI) / 180; }
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -32,7 +42,7 @@ function computeEtaMinutes(distanceKm) {
   const mins = 15 + distanceKm * 2.5;
   return Math.max(15, Math.min(60, Math.round(mins)));
 }
-// Delivery charge tiers by distance from the nearest zone center:
+// Delivery charge tiers by distance from the nearest zone center (LOCAL orders only):
 //   0–3 km  → Rs. 30
 //   3–6 km  → Rs. 60
 //   6–10 km → Rs. 90
@@ -82,57 +92,89 @@ async function nextOrderNumber() {
   return 1042 + parseInt(rows[0].c, 10);
 }
 
+async function insertOrderRecord(order) {
+  await pool.query(
+    `INSERT INTO orders (id, customer_id, otp, name, phone, address, lat, lng, gps_address,
+              item_total, delivery_fee, grand_total, eta_min, status, order_type, shipping_city, shipping_country)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Confirmed', $14, $15, $16)`,
+    [order.id, order.customerId, order.otp, order.name, order.phone, order.address,
+     order.lat ?? null, order.lng ?? null, order.gpsAddress ?? null,
+     order.itemTotal, order.deliveryFee, order.grandTotal, order.etaMin ?? null,
+     order.orderType, order.shippingCity ?? null, order.shippingCountry ?? null]
+  );
+  for (const it of order.items) {
+    await pool.query(
+      'INSERT INTO order_items (order_id, product_name, price, qty) VALUES ($1, $2, $3, $4)',
+      [order.id, it.name, it.price, it.qty]
+    );
+  }
+}
+
 router.post('/', optionalAuth, async (req, res) => {
   try {
-    const { name, phone, address, lat, lng, gps_address, items } = req.body;
+    const { name, phone, address, lat, lng, gps_address, items, shipping_city, shipping_country } = req.body;
     if (!name || !phone || !address || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Name, phone, address, and at least one item are required.' });
     }
-    if (typeof lat !== 'number' || typeof lng !== 'number') {
-      return res.status(400).json({ error: 'Location is required to place an order.' });
+    if (!/^9\d{9}$/.test(phone)) {
+      return res.status(400).json({ error: 'Please provide a valid 10-digit Nepali mobile number (starting with 9).' });
     }
-    const areaCheck = checkServiceArea(lat, lng);
-    if (!areaCheck.inside) {
-      return res.status(403).json({ error: 'Sorry, we currently deliver only within Birgunj and Pakaha Mainpur Municipality (Parsa District). Your location is outside our delivery area.' });
-    }
-    const inNepal = await isInNepal(lat, lng);
-    if (!inNepal) {
-      return res.status(403).json({ error: 'Sorry, this location appears to be outside Nepal. We only deliver within Nepal (Birgunj and Pakaha Mainpur Municipality, Parsa District).' });
-    }
-    const distanceKm = areaCheck.distanceKm;
-
     const itemTotal = items.reduce((sum, it) => sum + it.price * it.qty, 0);
     if (itemTotal < MIN_ORDER_AMOUNT) {
       return res.status(400).json({ error: `Minimum order amount is Rs. ${MIN_ORDER_AMOUNT}.` });
     }
-    const deliveryFee = computeDeliveryFee(distanceKm, itemTotal);
-    const grandTotal = itemTotal + deliveryFee;
-    const etaMin = computeEtaMinutes(distanceKm);
     const otp = String(Math.floor(1000 + Math.random() * 9000));
     const orderId = 'YM' + (await nextOrderNumber());
+    const customerId = req.user ? req.user.id : null;
 
-    await pool.query(
-      `INSERT INTO orders (id, customer_id, otp, name, phone, address, lat, lng, gps_address,
-                item_total, delivery_fee, grand_total, eta_min, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Confirmed')`,
-      [orderId, req.user ? req.user.id : null, otp, name, phone, address, lat, lng, gps_address || null,
-       itemTotal, deliveryFee, grandTotal, etaMin]
-    );
+    // ---- LOCAL order: customer is inside the Birgunj / Pakaha Mainpur delivery zone ----
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      const areaCheck = checkServiceArea(lat, lng);
+      if (!areaCheck.inside) {
+        return res.status(403).json({ error: 'Sorry, we currently deliver locally only within Birgunj and Pakaha Mainpur Municipality (Parsa District). Your location is outside our local delivery area — courier items are still available.' });
+      }
+      const inNepal = await isInNepal(lat, lng);
+      if (!inNepal) {
+        return res.status(403).json({ error: 'Sorry, this location appears to be outside Nepal. Local delivery is only within Nepal (Birgunj and Pakaha Mainpur Municipality, Parsa District).' });
+      }
+      const distanceKm = areaCheck.distanceKm;
+      const deliveryFee = computeDeliveryFee(distanceKm, itemTotal);
+      const grandTotal = itemTotal + deliveryFee;
+      const etaMin = computeEtaMinutes(distanceKm);
 
-    for (const it of items) {
-      await pool.query(
-        'INSERT INTO order_items (order_id, product_name, price, qty) VALUES ($1, $2, $3, $4)',
-        [orderId, it.name, it.price, it.qty]
-      );
+      await insertOrderRecord({
+        id: orderId, customerId, otp, name, phone, address, lat, lng, gpsAddress: gps_address,
+        itemTotal, deliveryFee, grandTotal, etaMin, orderType: 'local', items,
+      });
+
+      sendOrderNotificationEmail({
+        id: orderId, customerId, name, phone, address, lat, lng, items,
+        itemTotal, deliveryFee, grandTotal, etaMin, otp,
+      }).catch(() => {});
+
+      return res.json({ id: orderId, otp, itemTotal, deliveryFee, grandTotal, etaMin, orderType: 'local', status: 'Confirmed' });
     }
 
-    // Email the owner — fire and forget, never blocks the customer's order confirmation
+    // ---- COURIER order: customer is outside the local zone (anywhere in the world) ----
+    if (!shipping_city || !shipping_country) {
+      return res.status(400).json({ error: 'City and country are required for courier shipping.' });
+    }
+    const deliveryFee = computeCourierFee(itemTotal, shipping_country);
+    const grandTotal = itemTotal + deliveryFee;
+
+    await insertOrderRecord({
+      id: orderId, customerId, otp, name, phone, address,
+      itemTotal, deliveryFee, grandTotal, orderType: 'courier',
+      shippingCity: shipping_city, shippingCountry: shipping_country, items,
+    });
+
     sendOrderNotificationEmail({
-      id: orderId, customerId: req.user ? req.user.id : null, name, phone, address,
-      lat, lng, items, itemTotal, deliveryFee, grandTotal, etaMin, otp,
+      id: orderId, customerId, name, phone,
+      address: `${address}, ${shipping_city}, ${shipping_country}`,
+      items, itemTotal, deliveryFee, grandTotal, etaMin: null, otp,
     }).catch(() => {});
 
-    res.json({ id: orderId, otp, itemTotal, deliveryFee, grandTotal, etaMin, status: 'Confirmed' });
+    res.json({ id: orderId, otp, itemTotal, deliveryFee, grandTotal, orderType: 'courier', status: 'Confirmed' });
   } catch (err) {
     console.error('create order error:', err.message);
     res.status(500).json({ error: 'Could not place order. Please try again.' });
@@ -170,7 +212,7 @@ router.get('/', requireAdmin, async (req, res) => {
 router.put('/:id/status', requireAdmin, async (req, res) => {
   try {
     const { status } = req.body;
-    const valid = ['Confirmed', 'Packed', 'Out for Delivery', 'Delivered'];
+    const valid = ['Confirmed', 'Packed', 'Out for Delivery', 'Shipped', 'Delivered'];
     if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
     const existingRes = await pool.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
     if (!existingRes.rows[0]) return res.status(404).json({ error: 'Order not found.' });
@@ -183,7 +225,7 @@ router.put('/:id/status', requireAdmin, async (req, res) => {
 });
 
 router.get('/config', (req, res) => {
-  res.json({ zones: SERVICE_ZONES, minOrder: MIN_ORDER_AMOUNT, freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD });
+  res.json({ zones: SERVICE_ZONES, minOrder: MIN_ORDER_AMOUNT, freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD, courierFeeNepal: COURIER_FEE_NEPAL, courierFeeInternational: COURIER_FEE_INTERNATIONAL });
 });
 
 module.exports = router;
